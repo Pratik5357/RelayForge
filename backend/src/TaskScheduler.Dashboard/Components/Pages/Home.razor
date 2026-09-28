@@ -1,0 +1,90 @@
+﻿@page "/"
+@rendermode InteractiveServer
+@using TaskScheduler.Dashboard.Api
+@inject IHttpClientFactory HttpFactory
+
+<PageTitle>Jobs</PageTitle>
+
+<h1>Jobs</h1>
+<p>Live list from the RelayForge API. Submit a DAG from Swagger or the sample button below.</p>
+
+<div class="actions">
+    <button @onclick="RefreshAsync">Refresh</button>
+    <button @onclick="SubmitSampleAsync">Submit sample DAG</button>
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <span class="error">@_error</span>
+    }
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>State</th>
+            <th>Tasks</th>
+            <th>Created</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var job in _jobs)
+        {
+            <tr>
+                <td><a href="/jobs/@job.Id">@job.Name</a></td>
+                <td><span class="badge @job.State.ToLowerInvariant()">@job.State</span></td>
+                <td>@job.Tasks.Count</td>
+                <td>@job.CreatedAt.LocalDateTime.ToString("g")</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private List<JobStatusDto> _jobs = [];
+    private string? _error;
+
+    protected override Task OnInitializedAsync() => RefreshAsync();
+
+    private async Task RefreshAsync()
+    {
+        try
+        {
+            var client = HttpFactory.CreateClient("api");
+            _jobs = await client.GetFromJsonAsync<List<JobStatusDto>>("api/jobs") ?? [];
+            _error = null;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task SubmitSampleAsync()
+    {
+        try
+        {
+            var client = HttpFactory.CreateClient("api");
+            var body = new
+            {
+                name = "sample-pipeline",
+                tasks = new object[]
+                {
+                    new { key = "extract", type = "delay", payload = new { milliseconds = 200 }, dependsOn = Array.Empty<string>() },
+                    new { key = "transform", type = "echo", payload = new { step = "transform" }, dependsOn = new[] { "extract" } },
+                    new { key = "load", type = "echo", payload = new { step = "load" }, dependsOn = new[] { "transform" } }
+                }
+            };
+            var response = await client.PostAsJsonAsync("api/jobs", body);
+            if (!response.IsSuccessStatusCode)
+            {
+                _error = await response.Content.ReadAsStringAsync();
+                return;
+            }
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}
