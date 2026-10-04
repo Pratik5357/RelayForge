@@ -43,19 +43,45 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
+    // Parses postgres://user:pass@host:port/db by hand: System.Uri rejects raw '@', '#', '/' or
+    // brackets in the password, which is easy to hit with copy-pasted Supabase strings.
+    // A plain key=value Npgsql connection string is passed through unchanged.
     private static string? FromDatabaseUrl(string? url)
     {
         if (string.IsNullOrWhiteSpace(url)) return null;
-        var uri = new Uri(url);
-        var userInfo = uri.UserInfo.Split(':', 2);
+        url = url.Trim().Trim('"');
+
+        const string pg = "postgres://", pgql = "postgresql://";
+        string rest;
+        if (url.StartsWith(pg, StringComparison.OrdinalIgnoreCase)) rest = url[pg.Length..];
+        else if (url.StartsWith(pgql, StringComparison.OrdinalIgnoreCase)) rest = url[pgql.Length..];
+        else return url;
+
+        var at = rest.LastIndexOf('@');
+        if (at < 0) throw new InvalidOperationException("DATABASE_URL is missing 'user:password@host'.");
+        var userInfo = rest[..at];
+        var hostPart = rest[(at + 1)..];
+
+        var colon = userInfo.IndexOf(':');
+        var user = colon < 0 ? userInfo : userInfo[..colon];
+        var password = colon < 0 ? null : userInfo[(colon + 1)..];
+        if (password is not null && password.StartsWith('[') && password.EndsWith(']'))
+            throw new InvalidOperationException(
+                "DATABASE_URL still contains the [YOUR-PASSWORD] placeholder; replace it, brackets included, with the real password.");
+
+        var slash = hostPart.IndexOf('/');
+        var hostPort = slash < 0 ? hostPart : hostPart[..slash];
+        var db = slash < 0 ? "postgres" : hostPart[(slash + 1)..].Split('?')[0];
+        var hp = hostPort.Split(':', 2);
+
         return new Npgsql.NpgsqlConnectionStringBuilder
         {
-            Host = uri.Host,
-            Port = uri.Port > 0 ? uri.Port : 5432,
-            Database = uri.AbsolutePath.TrimStart('/'),
-            Username = Uri.UnescapeDataString(userInfo[0]),
-            Password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : null,
-            SslMode = Npgsql.SslMode.Prefer,
+            Host = hp[0],
+            Port = hp.Length > 1 && int.TryParse(hp[1], out var port) ? port : 5432,
+            Database = db,
+            Username = Uri.UnescapeDataString(user),
+            Password = password is null ? null : Uri.UnescapeDataString(password),
+            SslMode = Npgsql.SslMode.Require,
         }.ConnectionString;
     }
 }
