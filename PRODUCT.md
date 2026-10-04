@@ -16,7 +16,7 @@ A small distributed job scheduler built to be watched while it runs. A user subm
 Not a black-box queue: the running system is the explanation. Real jobs, real state, shown live rather than simulated.
 
 ## Operating Context
-Existing Next.js 16 frontend (frontend/) over a .NET 8 API with SQL Server (Docker). Frontend polls the API. Routes present: `/` (home with scenario cards), `/jobs`, `/jobs/new`, `/jobs/[id]`, `/concepts`. Docs: docs/PROJECT_OVERVIEW.md, docs/PROJECT_SPEC.md.
+Existing Next.js 16 frontend (frontend/) over a .NET 8 API with PostgreSQL (Docker). Frontend polls the API. Routes present: `/` (home with scenario cards), `/jobs`, `/jobs/new`, `/jobs/[id]`, `/concepts`. Docs: docs/PROJECT_OVERVIEW.md, docs/PROJECT_SPEC.md.
 
 ## Capabilities and Constraints
 - Backend is phased; check the plan/README for what is live before surfacing a feature. Retry, dead-letter, cancellation and SignalR may not be wired yet.

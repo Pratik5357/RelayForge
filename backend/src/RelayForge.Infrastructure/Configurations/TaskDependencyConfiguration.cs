@@ -11,9 +11,7 @@ public class TaskDependencyConfiguration : IEntityTypeConfiguration<TaskDependen
         builder.ToTable("TaskDependencies");
         builder.HasKey(d => d.Id);
 
-        // Both FKs point at JobTask. SQL Server rejects the default cascade-delete
-        // configuration here (multiple cascade paths from Job -> JobTask -> TaskDependency),
-        // so both must be Restrict; only Job -> JobTask cascades.
+        // Both FKs point at JobTask and are Restrict (no cascade); only Job -> JobTask cascades.
         builder.HasOne(d => d.JobTask)
             .WithMany(t => t.Dependencies)
             .HasForeignKey(d => d.JobTaskId)

@@ -6,7 +6,7 @@ RelayForge is a small distributed job scheduler, built to be watched while it ru
 
 This is a from-scratch rebuild. Phase 1 covers:
 
-- DAG (dependency graph) modeling and execution, backed by SQL Server via EF Core.
+- DAG (dependency graph) modeling and execution, backed by PostgreSQL via EF Core.
 - Topological ordering and cycle detection.
 - An in-process worker pool (`System.Threading.Channels`) that runs independent steps in parallel and respects dependencies.
 - A minimal API to submit a job and check its status.
@@ -22,17 +22,17 @@ This is a from-scratch rebuild. Phase 1 covers:
 
 - .NET 8 SDK
 - Node.js 18+ and npm
-- A SQL Server database reachable via connection string. SQL Server has no native macOS build, so this project runs it in a **dedicated Docker container just for the database** — nothing else (API, frontend) is containerized; Docker as a full deployment story is still deferred to a later phase. If you don't already have one, start one:
+- A PostgreSQL database reachable via connection string. If you don't already have one, run it in a **dedicated Docker container just for the database** (nothing else is containerized):
 
   ```bash
-  docker run -d --name relayforge-sqlserver \
-    -e "ACCEPT_EULA=Y" \
-    -e "MSSQL_SA_PASSWORD=<choose-a-strong-password>" \
-    -p 1434:1433 \
-    mcr.microsoft.com/mssql/server:latest
+  docker run -d --name relayforge-postgres \
+    -e "POSTGRES_PASSWORD=<choose-a-password>" \
+    -e "POSTGRES_DB=relayforge" \
+    -p 5433:5432 \
+    postgres:16
   ```
 
-  (Port `1434`, not the default `1433`, so it doesn't collide with any other SQL Server container you may already have running.) Any other reachable SQL Server instance — Azure SQL, a Windows machine, etc. — also works, you just need its connection string.
+  (Port `5433`, not the default `5432`, so it doesn't collide with a local Postgres.) Any other reachable PostgreSQL instance also works; you just need its connection string.
 
 ## Backend setup
 
@@ -43,10 +43,8 @@ cd backend
 1. Set your real connection string as a local user secret (never committed — `appsettings.Development.json` only holds a placeholder):
 
    ```bash
-   dotnet user-secrets set "ConnectionStrings:Default" "Server=localhost,1434;Database=RelayForge;User Id=sa;Password=<your-password>;TrustServerCertificate=True;Encrypt=False;" --project src/RelayForge.Api
+   dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5433;Database=relayforge;Username=postgres;Password=<your-password>" --project src/RelayForge.Api
    ```
-
-   (Swap in the Azure SQL connection string shown further up if you're using that instead of the Docker container.)
 
 2. Apply the initial migration (creates `Jobs`, `JobTasks`, `TaskDependencies` tables):
 

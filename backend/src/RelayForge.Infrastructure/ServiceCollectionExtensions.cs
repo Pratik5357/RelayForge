@@ -12,12 +12,19 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        var connectionString = configuration.GetConnectionString("Default")
-            ?? throw new InvalidOperationException(
-                "Missing ConnectionStrings:Default. Set it via `dotnet user-secrets set \"ConnectionStrings:Default\" \"...\"` in RelayForge.Api.");
+        var connectionString = configuration.GetConnectionString("Default");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            // Railway (and Heroku-style hosts) expose DATABASE_URL as postgres://user:pass@host:port/db.
+            connectionString = FromDatabaseUrl(configuration["DATABASE_URL"]);
+        }
+        connectionString = string.IsNullOrWhiteSpace(connectionString)
+            ? throw new InvalidOperationException(
+                "Missing ConnectionStrings:Default. Set it via `dotnet user-secrets set \"ConnectionStrings:Default\" \"...\"` in RelayForge.Api, or provide DATABASE_URL.")
+            : connectionString;
 
         services.AddDbContext<RelayForgeDbContext>(options =>
-            options.UseSqlServer(connectionString));
+            options.UseNpgsql(connectionString, npgsql => npgsql.EnableRetryOnFailure()));
 
         services.Configure<ReliabilityOptions>(configuration.GetSection("Reliability"));
 
@@ -34,5 +41,21 @@ public static class ServiceCollectionExtensions
         services.AddHostedService<ReliabilitySweepHostedService>();
 
         return services;
+    }
+
+    private static string? FromDatabaseUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return null;
+        var uri = new Uri(url);
+        var userInfo = uri.UserInfo.Split(':', 2);
+        return new Npgsql.NpgsqlConnectionStringBuilder
+        {
+            Host = uri.Host,
+            Port = uri.Port > 0 ? uri.Port : 5432,
+            Database = uri.AbsolutePath.TrimStart('/'),
+            Username = Uri.UnescapeDataString(userInfo[0]),
+            Password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : null,
+            SslMode = Npgsql.SslMode.Prefer,
+        }.ConnectionString;
     }
 }

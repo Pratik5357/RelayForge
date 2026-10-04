@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using RelayForge.Api.Endpoints;
 using RelayForge.Api.Realtime;
 using RelayForge.Infrastructure;
@@ -20,7 +21,8 @@ builder.Services.AddCors(options =>
     {
         // SignalR needs AllowCredentials(), which the CORS spec forbids combining with a
         // wildcard origin -- WithOrigins (an explicit origin) is required here.
-        policy.WithOrigins("http://localhost:3000")
+        var origins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
+        policy.WithOrigins(origins is { Length: > 0 } ? origins : new[] { "http://localhost:3000" })
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials();
@@ -28,6 +30,13 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+// Opt-in: set Database__MigrateOnStartup=true to apply pending EF migrations at boot.
+if (builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
+{
+    using var scope = app.Services.CreateScope();
+    scope.ServiceProvider.GetRequiredService<RelayForgeDbContext>().Database.Migrate();
+}
 
 app.UseCors(FrontendCorsPolicy);
 
