@@ -1,153 +1,284 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Callout } from "@/components/Callout";
-import { submitJob } from "@/lib/api";
-import { SCENARIOS } from "@/lib/scenarios";
-import type { SubmitJobRequest } from "@/lib/types";
+import { ApiError, submitJob } from "@/lib/api";
+import type { SubmitJobTaskRequest } from "@/lib/types";
+import { Button } from "@/components/ui/Button";
+import { Callout } from "@/components/ui/Callout";
+import { FieldLabel, Input } from "@/components/ui/Input";
+import { TaskDependencyPicker } from "@/components/TaskDependencyPicker";
 
-const STARTING_POINT: SubmitJobRequest = {
-  name: "my-first-job",
-  tasks: [
-    { key: "step-one", type: "delay", payload: { milliseconds: 500 } },
-    { key: "step-two", type: "echo", payload: { anything: "you like" }, dependsOn: ["step-one"] },
-  ],
+type DraftTask = SubmitJobTaskRequest;
+
+let keyCounter = 0;
+function nextKey() {
+  keyCounter += 1;
+  return `task-${keyCounter}`;
+}
+
+const PRESETS: Record<string, { jobName: string; tasks: Omit<DraftTask, "key">[] }> = {
+  flaky: {
+    jobName: "Flaky step (retries into success)",
+    tasks: [
+      {
+        name: "flaky-step",
+        simulatedDurationMs: 1000,
+        dependsOn: [],
+        maxAttempts: 4,
+        failUntilAttempt: 3,
+      },
+    ],
+  },
+  hopeless: {
+    jobName: "Hopeless step (dead-letters)",
+    tasks: [
+      {
+        name: "hopeless-step",
+        simulatedDurationMs: 1000,
+        dependsOn: [],
+        maxAttempts: 3,
+        failUntilAttempt: 10,
+      },
+    ],
+  },
+  partial: {
+    jobName: "Partial failure (one branch succeeds, one dead-letters)",
+    tasks: [
+      { name: "start", simulatedDurationMs: 500, dependsOn: [] },
+      { name: "healthy-branch", simulatedDurationMs: 1000, dependsOn: ["start"] },
+      {
+        name: "hopeless-branch",
+        simulatedDurationMs: 1000,
+        dependsOn: ["start"],
+        maxAttempts: 3,
+        failUntilAttempt: 10,
+      },
+    ],
+  },
 };
 
 export default function NewJobPage() {
   const router = useRouter();
-  const [body, setBody] = useState(() => JSON.stringify(STARTING_POINT, null, 2));
-  const [error, setError] = useState<string | null>(null);
+  const [jobName, setJobName] = useState("");
+  const [tasks, setTasks] = useState<DraftTask[]>([]);
+  const [taskName, setTaskName] = useState("");
+  const [durationSeconds, setDurationSeconds] = useState(2);
+  const [dependsOn, setDependsOn] = useState<string[]>([]);
+  const [maxAttempts, setMaxAttempts] = useState<string>("");
+  const [failUntilAttempt, setFailUntilAttempt] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault();
-    setSubmitting(true);
+  function addTask() {
+    if (!taskName.trim()) {
+      return;
+    }
+    setTasks((prev) => [
+      ...prev,
+      {
+        key: nextKey(),
+        name: taskName.trim(),
+        simulatedDurationMs: Math.max(0, Math.round(durationSeconds * 1000)),
+        dependsOn,
+        maxAttempts: maxAttempts.trim() ? Number(maxAttempts) : undefined,
+        failUntilAttempt: failUntilAttempt.trim() ? Number(failUntilAttempt) : undefined,
+      },
+    ]);
+    setTaskName("");
+    setDurationSeconds(2);
+    setDependsOn([]);
+    setMaxAttempts("");
+    setFailUntilAttempt("");
+  }
+
+  function loadPreset(id: keyof typeof PRESETS) {
+    const p = PRESETS[id];
+    // Preset tasks reference each other by name; re-key them through nextKey() and remap
+    // dependsOn from names to the freshly generated keys.
+    const keyByName = new Map(p.tasks.map((t) => [t.name, nextKey()]));
+    setTasks(
+      p.tasks.map((t) => ({
+        ...t,
+        key: keyByName.get(t.name)!,
+        dependsOn: t.dependsOn.map((name) => keyByName.get(name)!),
+      })),
+    );
+    setJobName(p.jobName);
+    setError(null);
+  }
+
+  function removeTask(key: string) {
+    setTasks((prev) =>
+      prev
+        .filter((t) => t.key !== key)
+        .map((t) => ({ ...t, dependsOn: t.dependsOn.filter((d) => d !== key) })),
+    );
+  }
+
+  async function handleSubmit() {
     setError(null);
 
-    let parsed: SubmitJobRequest;
-    try {
-      parsed = JSON.parse(body) as SubmitJobRequest;
-    } catch (err) {
-      setError(`That is not valid JSON: ${err instanceof Error ? err.message : String(err)}`);
-      setSubmitting(false);
+    if (tasks.length === 0) {
+      setError("Add at least one step before starting the run.");
       return;
     }
 
+    setSubmitting(true);
     try {
-      const job = await submitJob(parsed);
+      const job = await submitJob({
+        name: jobName.trim() || undefined,
+        tasks,
+      });
       router.push(`/jobs/${job.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(err instanceof ApiError ? err.message : "Could not start the run.");
       setSubmitting(false);
     }
   }
 
   return (
-    <section className="space-y-5">
-      <div className="space-y-1">
-        <h1 className="text-xl font-semibold">Write a job by hand</h1>
-        <p className="text-sm text-zinc-500">
-          This is the raw request the API takes. If you just want to see the system work,{" "}
-          <Link href="/" className="underline">
-            the tour
-          </Link>{" "}
-          does it for you.
+    <div className="max-w-3xl space-y-8">
+      <div>
+        <h1 className="text-4xl leading-none">New run</h1>
+        <p className="text-[var(--muted)]">
+          Add a few steps and mark which ones wait for which. A chain shows ordering; one step
+          with two independent children shows parallelism. Give a step a &ldquo;fail until
+          try&rdquo; number to see retries, growing delays and parking.
         </p>
       </div>
 
-      <Callout tone="teach" title="The three things that matter">
-        <ul className="list-disc space-y-1 pl-5 text-zinc-700 dark:text-zinc-300">
-          <li>
-            <code className="font-mono">key</code> — a name for the step, unique within the job.
-            Other steps refer to it by this.
-          </li>
-          <li>
-            <code className="font-mono">dependsOn</code> — the keys this step waits for. Leave it
-            out and the step starts immediately. Circular waits are rejected.
-          </li>
-          <li>
-            <code className="font-mono">type</code> — which built-in worker runs it. There are
-            three, meant for demonstrating behaviour rather than doing real work.
-          </li>
-        </ul>
-      </Callout>
-
-      <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-zinc-200 text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800">
-            <tr>
-              <th className="px-4 py-2 font-medium">type</th>
-              <th className="px-4 py-2 font-medium">what it does</th>
-              <th className="px-4 py-2 font-medium">payload</th>
-            </tr>
-          </thead>
-          <tbody className="[&_td]:px-4 [&_td]:py-2 [&_tr]:border-b [&_tr]:border-zinc-100 dark:[&_tr]:border-zinc-800 [&_tr:last-child]:border-0">
-            <tr>
-              <td className="font-mono">echo</td>
-              <td>Succeeds at once, returning the payload as its result.</td>
-              <td className="font-mono text-xs text-zinc-500">anything</td>
-            </tr>
-            <tr>
-              <td className="font-mono">delay</td>
-              <td>Waits, then succeeds. Use it to make a run long enough to watch.</td>
-              <td className="font-mono text-xs text-zinc-500">{`{ "milliseconds": 500 }`}</td>
-            </tr>
-            <tr>
-              <td className="font-mono">fail</td>
-              <td>
-                Throws on purpose. With <code className="font-mono">succeedOnAttempt</code> it
-                starts working on that attempt; without it, it never does.
-              </td>
-              <td className="font-mono text-xs text-zinc-500">{`{ "succeedOnAttempt": 3 }`}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <p className="text-sm text-zinc-500">
-        Optional per step: <code className="font-mono">maxAttempts</code> (defaults to 3) caps how
-        many tries a failing step gets before it is dead-lettered.
-      </p>
-
-      <form onSubmit={handleSubmit} className="space-y-3">
-        <label htmlFor="job-json" className="block text-sm font-medium">
-          Request body
-        </label>
-        <textarea
-          id="job-json"
-          value={body}
-          onChange={(event) => setBody(event.target.value)}
-          spellCheck={false}
-          rows={18}
-          className="w-full rounded-lg border border-zinc-200 bg-white p-3 font-mono text-xs dark:border-zinc-800 dark:bg-zinc-900"
-        />
-
-        {error && <Callout tone="error">{error}</Callout>}
-
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="submit"
-            disabled={submitting}
-            className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
-          >
-            {submitting ? "Submitting…" : "Run this job"}
-          </button>
-          <span className="text-xs text-zinc-500">Or load a tour scenario to edit:</span>
-          {SCENARIOS.map((scenario) => (
-            <button
-              key={scenario.id}
-              type="button"
-              onClick={() => setBody(JSON.stringify(scenario.job, null, 2))}
-              className="rounded-md border border-zinc-300 px-2 py-0.5 text-xs hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
-            >
-              {scenario.id}
-            </button>
-          ))}
+      <section className="space-y-3" aria-labelledby="presets-heading">
+        <h3 id="presets-heading" className="text-sm font-semibold">
+          Quick-fill a reliability demo
+        </h3>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="secondary" size="sm" onClick={() => loadPreset("flaky")}>
+            Flaky step (retries into success)
+          </Button>
+          <Button type="button" variant="secondary" size="sm" onClick={() => loadPreset("hopeless")}>
+            Hopeless step (gets parked)
+          </Button>
+          <Button type="button" variant="secondary" size="sm" onClick={() => loadPreset("partial")}>
+            Partial failure (one branch parked)
+          </Button>
         </div>
-      </form>
-    </section>
+      </section>
+
+      <section className="space-y-2">
+        <FieldLabel htmlFor="job-name">Run name (optional)</FieldLabel>
+        <Input
+          id="job-name"
+          value={jobName}
+          onChange={(e) => setJobName(e.target.value)}
+          placeholder="e.g. Ordering demo"
+        />
+      </section>
+
+      <section className="space-y-4 rounded-[4px] border border-[var(--border)] bg-[var(--surface)] p-5">
+        <h3 className="text-sm font-semibold">Add a step</h3>
+        <div className="grid gap-4 sm:grid-cols-[2fr_1fr]">
+          <div>
+            <FieldLabel htmlFor="task-name">Name</FieldLabel>
+            <Input
+              id="task-name"
+              value={taskName}
+              onChange={(e) => setTaskName(e.target.value)}
+              placeholder="e.g. fetch-data"
+            />
+          </div>
+          <div>
+            <FieldLabel htmlFor="task-duration">Duration (seconds)</FieldLabel>
+            <Input
+              id="task-duration"
+              type="number"
+              min={0}
+              step={0.5}
+              value={durationSeconds}
+              onChange={(e) => setDurationSeconds(Number(e.target.value))}
+              className="font-mono"
+            />
+          </div>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <FieldLabel htmlFor="task-max">Max tries (optional)</FieldLabel>
+            <Input
+              id="task-max"
+              type="number"
+              min={1}
+              value={maxAttempts}
+              onChange={(e) => setMaxAttempts(e.target.value)}
+              placeholder="default"
+              className="font-mono"
+            />
+          </div>
+          <div>
+            <FieldLabel htmlFor="task-fail">Fail until try # (optional)</FieldLabel>
+            <Input
+              id="task-fail"
+              type="number"
+              min={1}
+              value={failUntilAttempt}
+              onChange={(e) => setFailUntilAttempt(e.target.value)}
+              placeholder="always succeeds"
+              className="font-mono"
+            />
+          </div>
+        </div>
+        <div>
+          <p className="mb-1 text-xs font-semibold text-[var(--muted)]">Waits for</p>
+          <TaskDependencyPicker
+            options={tasks.map((t) => ({ key: t.key, name: t.name }))}
+            selected={dependsOn}
+            onChange={setDependsOn}
+          />
+        </div>
+        <Button type="button" variant="secondary" size="sm" onClick={addTask}>
+          Add step
+        </Button>
+      </section>
+
+      {tasks.length > 0 && (
+        <section className="space-y-3" aria-labelledby="steps-heading">
+          <h3 id="steps-heading" className="text-sm font-semibold">
+            Steps in this run
+          </h3>
+          <ul className="divide-y divide-[var(--border)] rounded-[4px] border border-[var(--border)] bg-[var(--surface)]">
+            {tasks.map((task) => (
+              <li key={task.key} className="flex items-center justify-between gap-4 px-4 py-2.5 text-sm">
+                <div className="min-w-0">
+                  <span className="font-semibold">{task.name}</span>{" "}
+                  <span className="text-xs text-[var(--muted)]">
+                    {(task.simulatedDurationMs / 1000).toFixed(1)}s
+                    {task.dependsOn.length > 0 && `, waits for ${task.dependsOn.join(", ")}`}
+                    {task.failUntilAttempt !== undefined &&
+                      `, fails until try ${task.failUntilAttempt}`}
+                    {task.maxAttempts !== undefined && `, max ${task.maxAttempts} tries`}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeTask(task.key)}
+                  className="shrink-0 text-xs font-semibold text-[var(--muted)] transition-colors duration-150 hover:text-[var(--state-failed-fg)]"
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {error && (
+        <Callout tone="error" role="alert">
+          {error}
+        </Callout>
+      )}
+
+      <Button onClick={handleSubmit} disabled={submitting}>
+        {submitting ? "Starting…" : "Start run"}
+      </Button>
+    </div>
   );
 }

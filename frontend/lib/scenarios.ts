@@ -1,23 +1,12 @@
 import type { SubmitJobRequest } from "./types";
 
-/**
- * The guided tour. Each scenario is a job the engine can run right now, paired
- * with the one thing it is meant to prove. A first-time visitor should be able to
- * click through these in order and end up understanding the whole system, without
- * writing any JSON or knowing what to fill in.
- */
 export type Scenario = {
   id: string;
   title: string;
-  /** One line, plain language: what this job does. */
   summary: string;
-  /** The distributed-systems idea on display. */
   concept: string;
-  /** What to watch on the job page while it runs. */
   watchFor: string[];
-  /** The state the job should end in, so a visitor knows if it worked. */
   expected: string;
-  /** Roughly how long the run takes, so nobody thinks it hung. */
   runtime: string;
   job: SubmitJobRequest;
 };
@@ -26,122 +15,160 @@ export const SCENARIOS: Scenario[] = [
   {
     id: "ordering",
     title: "1. Steps run in order",
-    summary: "Three steps in a line: extract, then transform, then load.",
+    summary:
+      "A three-step chain, each one depending on the last. Watch them start strictly in sequence.",
     concept: "Dependency ordering (topological sort)",
     watchFor: [
-      "Each step only starts once the one before it succeeded.",
-      "The DAG shows three columns, one step per column.",
+      "fetch-data starts first and finishes before anything else starts.",
+      "transform-data only starts once fetch-data has succeeded.",
+      "load-data only starts once transform-data has succeeded.",
     ],
-    expected: "Succeeded, with all three steps green.",
-    runtime: "about 1 second",
+    expected: "Succeeded — all 3 steps green, run strictly one after another.",
+    runtime: "~6s",
     job: {
-      name: "demo-ordering",
+      name: "1. Steps run in order",
+      scenarioKey: "ordering",
       tasks: [
-        { key: "extract", type: "delay", payload: { milliseconds: 400 } },
-        { key: "transform", type: "delay", payload: { milliseconds: 400 }, dependsOn: ["extract"] },
-        { key: "load", type: "echo", payload: { rows: 42 }, dependsOn: ["transform"] },
+        { key: "fetch", name: "fetch-data", simulatedDurationMs: 2000, dependsOn: [] },
+        { key: "transform", name: "transform-data", simulatedDurationMs: 2000, dependsOn: ["fetch"] },
+        { key: "load", name: "load-data", simulatedDurationMs: 2000, dependsOn: ["transform"] },
       ],
     },
   },
   {
     id: "parallel",
     title: "2. Independent steps run at the same time",
-    summary: "One step fans out into two shards, then a merge step waits for both.",
-    concept: "Parallelism and join (fan-out / fan-in)",
+    summary:
+      "One setup step, then two branches that don't depend on each other. They run concurrently, not one after the other.",
+    concept: "Parallelism and fan-out",
     watchFor: [
-      "Both shards turn blue together — they only depend on seed, so nothing makes them wait for each other.",
-      "merge stays grey until the slower shard finishes, then runs once.",
+      "shard-a and shard-b both go Running at roughly the same moment, right after setup succeeds.",
+      "Total time is close to setup + the slower shard, not the sum of every step.",
     ],
-    expected: "Succeeded. Total time is about as long as the slowest shard, not the sum of both.",
-    runtime: "about 2 seconds",
+    expected: "Succeeded — total time ≈ slowest branch, not the sum of all branches.",
+    runtime: "~5s",
     job: {
-      name: "demo-parallel",
+      name: "2. Independent steps run at the same time",
+      scenarioKey: "parallel",
       tasks: [
-        { key: "seed", type: "echo", payload: { rows: 2 } },
-        { key: "shard-a", type: "delay", payload: { milliseconds: 700 }, dependsOn: ["seed"] },
-        { key: "shard-b", type: "delay", payload: { milliseconds: 1600 }, dependsOn: ["seed"] },
-        { key: "merge", type: "echo", payload: { step: "merge" }, dependsOn: ["shard-a", "shard-b"] },
+        { key: "setup", name: "setup", simulatedDurationMs: 1500, dependsOn: [] },
+        { key: "shard-a", name: "shard-a", simulatedDurationMs: 3000, dependsOn: ["setup"] },
+        { key: "shard-b", name: "shard-b", simulatedDurationMs: 3500, dependsOn: ["setup"] },
       ],
     },
   },
   {
     id: "retry",
     title: "3. A flaky step retries until it works",
-    summary: "The first step fails twice on purpose and succeeds on its third attempt.",
+    summary:
+      "This step fails on its first two attempts, then succeeds on the third — watch it retry with a growing delay between attempts instead of giving up immediately.",
     concept: "Exponential backoff with jitter",
     watchFor: [
-      "The attempt counter on flaky-step climbs 1/4, 2/4, 3/4.",
-      "The wait between attempts grows — that is the exponential backoff.",
-      "The step that depends on it never runs early; it waits for the eventual success.",
+      "The attempt count climbs: 1 of 4, then 2 of 4, then 3 of 4.",
+      "There's a growing pause (\"retrying in Ns\") between each attempt.",
+      "It finally succeeds on attempt 3 — the job doesn't fail.",
     ],
-    expected: "Succeeded, with flaky-step showing 3 of 4 attempts used.",
-    runtime: "a few seconds, because of the backoff waits",
+    expected: "Succeeded — flaky-step shows 3 of 4 attempts used.",
+    runtime: "~5s",
     job: {
-      name: "demo-retry",
+      name: "3. A flaky step retries until it works",
+      scenarioKey: "retry",
       tasks: [
-        { key: "flaky-step", type: "fail", payload: { succeedOnAttempt: 3 }, maxAttempts: 4 },
-        { key: "after-recovery", type: "echo", payload: { ok: true }, dependsOn: ["flaky-step"] },
+        {
+          key: "flaky",
+          name: "flaky-step",
+          simulatedDurationMs: 1000,
+          dependsOn: [],
+          maxAttempts: 4,
+          failUntilAttempt: 3,
+        },
       ],
     },
   },
   {
     id: "dead-letter",
     title: "4. A hopeless step gets parked, not retried forever",
-    summary: "A step that always fails, allowed two attempts.",
+    summary:
+      "This step never succeeds. Watch RelayForge give it exactly 3 chances, then stop and set it aside instead of retrying forever.",
     concept: "Dead-letter queue",
     watchFor: [
-      "Two attempts, then the state becomes DeadLettered instead of retrying again.",
-      "The error message from the last attempt is kept on the card.",
-      "The dead-letter count in the wiring panel on the home page goes up.",
+      "The attempt count climbs to 3 of 3, with a growing delay each time.",
+      "After the 3rd failure, the step is marked DeadLettered — no 4th attempt happens.",
     ],
-    expected: "Failed, with the step DeadLettered. That is the system working, not breaking.",
-    runtime: "a few seconds",
+    expected: "Failed — hopeless-step shows DeadLettered.",
+    runtime: "~6s",
     job: {
-      name: "demo-dead-letter",
-      tasks: [{ key: "always-fails", type: "fail", payload: {}, maxAttempts: 2 }],
+      name: "4. A hopeless step gets parked, not retried forever",
+      scenarioKey: "dead-letter",
+      tasks: [
+        {
+          key: "hopeless",
+          name: "hopeless-step",
+          simulatedDurationMs: 1000,
+          dependsOn: [],
+          maxAttempts: 3,
+          failUntilAttempt: 10,
+        },
+      ],
     },
   },
   {
     id: "partial",
     title: "5. One broken branch does not sink the rest",
-    summary: "Two independent branches, one of which always fails.",
-    concept: "Per-job state derived from its tasks",
+    summary:
+      "Two branches split off from one setup step. One branch is healthy; the other is hopeless and dead-letters. The healthy branch still gets credit for succeeding.",
+    concept: "Per-job state derived honestly from its tasks",
     watchFor: [
-      "The healthy branch still finishes while the other one gives up.",
-      "The job ends as PartiallyFailed — neither wholly done nor wholly lost.",
+      "healthy-branch runs to Succeeded.",
+      "hopeless-branch exhausts its attempts and ends DeadLettered.",
+      "The job's own state reflects the mix, rather than one failure sinking everything.",
     ],
-    expected: "PartiallyFailed: one step Succeeded, one DeadLettered.",
-    runtime: "a few seconds",
+    expected: "PartiallyFailed — one branch Succeeded, the other DeadLettered.",
+    runtime: "~6s",
     job: {
-      name: "demo-partial-failure",
+      name: "5. One broken branch does not sink the rest",
+      scenarioKey: "partial",
       tasks: [
-        { key: "healthy-branch", type: "delay", payload: { milliseconds: 500 } },
-        { key: "broken-branch", type: "fail", payload: {}, maxAttempts: 1 },
+        { key: "start", name: "start", simulatedDurationMs: 1000, dependsOn: [] },
+        { key: "healthy", name: "healthy-branch", simulatedDurationMs: 1500, dependsOn: ["start"] },
+        {
+          key: "hopeless",
+          name: "hopeless-branch",
+          simulatedDurationMs: 1000,
+          dependsOn: ["start"],
+          maxAttempts: 3,
+          failUntilAttempt: 10,
+        },
       ],
     },
   },
   {
     id: "cancel",
     title: "6. Cancel a run that is still going",
-    summary: "A slow chain of steps, so there is time to press Cancel.",
+    summary:
+      "Three steps, each taking a few seconds. Submit it, then press Cancel while one is still running — watch what happens to the step in flight versus the ones that haven't started.",
     concept: "Cooperative cancellation",
     watchFor: [
-      "Press Cancel while the first step is still blue.",
-      "Steps that had not started yet go to Cancelled; the one already running is left to finish.",
+      "Press Cancel while slow-step-1 shows Running.",
+      "slow-step-2 and slow-step-3 (not yet started) immediately show Cancelled.",
+      "slow-step-1 is left alone and finishes naturally.",
+      "Once it settles, the job itself ends Cancelled.",
     ],
-    expected: "Cancelled, once the in-flight step settles.",
-    runtime: "about 15 seconds if you let it run to the end",
+    expected: "Cancelled — in-flight step finishes, the rest are called off.",
+    runtime: "~15s (cancel partway through)",
     job: {
-      name: "demo-cancel",
+      name: "6. Cancel a run that is still going",
+      scenarioKey: "cancel",
       tasks: [
-        { key: "slow-step-1", type: "delay", payload: { milliseconds: 5000 } },
-        { key: "slow-step-2", type: "delay", payload: { milliseconds: 5000 }, dependsOn: ["slow-step-1"] },
-        { key: "slow-step-3", type: "delay", payload: { milliseconds: 5000 }, dependsOn: ["slow-step-2"] },
+        { key: "slow1", name: "slow-step-1", simulatedDurationMs: 6000, dependsOn: [] },
+        { key: "slow2", name: "slow-step-2", simulatedDurationMs: 6000, dependsOn: ["slow1"] },
+        { key: "slow3", name: "slow-step-3", simulatedDurationMs: 6000, dependsOn: ["slow2"] },
       ],
     },
   },
 ];
 
 export function findScenario(id: string | null | undefined): Scenario | undefined {
-  return id ? SCENARIOS.find((scenario) => scenario.id === id) : undefined;
+  if (!id) return undefined;
+  return SCENARIOS.find((s) => s.id === id);
 }

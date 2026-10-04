@@ -1,135 +1,105 @@
 # RelayForge
 
-A mini distributed workflow engine (Temporal / Airflow in spirit). Jobs are DAGs of tasks. The system retries with backoff, reclaims crashed workers via leases, scales out over RabbitMQ, and exposes live status over REST + SignalR.
+RelayForge is a small distributed job scheduler, built to be watched while it runs — not just read about. You submit a "job" made of one or more steps (with dependencies between them), and RelayForge runs those steps, tracks their progress, and shows you exactly what's happening as it happens. See `docs/PROJECT_OVERVIEW.md` for the plain-language pitch and `docs/PROJECT_SPEC.md` for the original learning-project spec.
 
-This is a learning / portfolio project. Code favors being obvious over being clever.
+## Current status: Phase 1 of 3 — Core Engine
 
-## Repo layout
+This is a from-scratch rebuild. Phase 1 covers:
 
-```
-/backend      .NET 8 solution — the engine (RelayForge.sln)
-  /src        TaskScheduler.{Api,Worker,Domain,Infrastructure,Dashboard}
-  /tests      unit + integration tests
-/frontend     Next.js 16 dashboard (App Router, TypeScript, Tailwind)
-/deploy       docker-compose, prometheus, grafana, k6
-/docs/adr     architecture decision records
-```
+- DAG (dependency graph) modeling and execution, backed by SQL Server via EF Core.
+- Topological ordering and cycle detection.
+- An in-process worker pool (`System.Threading.Channels`) that runs independent steps in parallel and respects dependencies.
+- A minimal API to submit a job and check its status.
+- A frontend to submit a job by hand and watch it run (polling-based).
 
-`PROJECT_SPEC.md` describes the original phase plan; the only deviation is that `src/` and `tests/` now live under `backend/` so the frontend can sit beside them.
+**Not built yet** (later phases): retry with backoff, dead-lettering, lease/heartbeat crash recovery, job cancellation, live push updates (SignalR), the six-scenario guided demo tour, and a real DAG graph visualization. Distributed workers (RabbitMQ/Redis) and the observability/deployment stack (Prometheus, Grafana, Docker, CI) are deferred until Docker is back in the picture.
 
-## Run locally (no Docker)
+**Known Phase 1 limitation:** the worker queue is purely in-memory. If the API process restarts mid-job, that job stays stuck `Running` with no further progress — there's no lease/reclaim mechanism yet.
 
-Requires the .NET 8 SDK and Node 22.
+> Full list of settings, example values and troubleshooting: see [ENVIRONMENT.md](ENVIRONMENT.md).
 
-**Backend** (terminal 1):
+## Prerequisites
+
+- .NET 8 SDK
+- Node.js 18+ and npm
+- A SQL Server database reachable via connection string. SQL Server has no native macOS build, so this project runs it in a **dedicated Docker container just for the database** — nothing else (API, frontend) is containerized; Docker as a full deployment story is still deferred to a later phase. If you don't already have one, start one:
+
+  ```bash
+  docker run -d --name relayforge-sqlserver \
+    -e "ACCEPT_EULA=Y" \
+    -e "MSSQL_SA_PASSWORD=<choose-a-strong-password>" \
+    -p 1434:1433 \
+    mcr.microsoft.com/mssql/server:latest
+  ```
+
+  (Port `1434`, not the default `1433`, so it doesn't collide with any other SQL Server container you may already have running.) Any other reachable SQL Server instance — Azure SQL, a Windows machine, etc. — also works, you just need its connection string.
+
+## Backend setup
 
 ```bash
-dotnet test backend/RelayForge.sln
-dotnet run --project backend/src/TaskScheduler.Api
+cd backend
 ```
 
-API: [http://localhost:5053/swagger](http://localhost:5053/swagger)
+1. Set your real connection string as a local user secret (never committed — `appsettings.Development.json` only holds a placeholder):
 
-SQLite file `relayforge.dev.db` is created next to the API. In-process workers consume a `Channel<T>` — no Redis or RabbitMQ needed.
+   ```bash
+   dotnet user-secrets set "ConnectionStrings:Default" "Server=localhost,1434;Database=RelayForge;User Id=sa;Password=<your-password>;TrustServerCertificate=True;Encrypt=False;" --project src/RelayForge.Api
+   ```
 
-**Frontend** (terminal 2):
+   (Swap in the Azure SQL connection string shown further up if you're using that instead of the Docker container.)
+
+2. Apply the initial migration (creates `Jobs`, `JobTasks`, `TaskDependencies` tables):
+
+   ```bash
+   dotnet tool run dotnet-ef database update -p src/RelayForge.Infrastructure -s src/RelayForge.Api
+   ```
+
+3. Run the API:
+
+   ```bash
+   dotnet run --project src/RelayForge.Api
+   ```
+
+   It listens on `https://localhost:7054` (and `http://localhost:5284`) by default. Confirm it's up: `GET https://localhost:7054/health` should return `{"status":"ok"}`.
+
+Run the domain tests any time with:
+
+```bash
+dotnet test backend/tests/RelayForge.Domain.Tests
+```
+
+## Frontend setup
 
 ```bash
 cd frontend
+cp .env.local.example .env.local   # points NEXT_PUBLIC_API_URL at the API above
 npm install
 npm run dev
 ```
 
-Dashboard: [http://localhost:3000](http://localhost:3000). It reads `NEXT_PUBLIC_API_BASE_URL` (see `frontend/.env.example`, default `http://localhost:5053`).
+Open `http://localhost:3000` — it redirects to `/jobs`.
 
-The overview page is a guided tour: six one-click demos that each run a real job and say what to watch for (ordering, parallelism, retry with backoff, dead-lettering, partial failure, cancellation). Nothing needs filling in — that is the intended way to see the system, and the intended way to demo it to someone else.
+## Trying it out
 
-The Blazor dashboard from Phase 5 is still there if you want to compare the two:
+On `/jobs/new`, add a few tasks and mark dependencies between them:
 
-```bash
-dotnet run --project backend/src/TaskScheduler.Dashboard
-```
+- A **chain** (B depends on A, C depends on B) demonstrates ordering — steps run strictly in sequence.
+- **One task with two independent children** (both depend only on the first, not on each other) demonstrates parallelism — both children start together and the job finishes in roughly the time of the slower one, not the sum of both.
 
-### Submit a DAG
+Submit, and you'll land on the job's live-updating detail page.
 
-From the frontend: **Submit** → pick a sample → *Submit*. Or over HTTP:
-
-```bash
-curl -s http://localhost:5053/api/jobs -H 'Content-Type: application/json' -d '{
-  "name": "pipeline",
-  "tasks": [
-    { "key": "extract", "type": "delay", "payload": { "milliseconds": 200 } },
-    { "key": "transform", "type": "echo", "payload": { "step": "transform" }, "dependsOn": ["extract"] },
-    { "key": "load", "type": "echo", "payload": { "step": "load" }, "dependsOn": ["transform"] }
-  ]
-}'
-```
-
-Handlers: `echo`, `delay` (`milliseconds`), `fail` (`succeedOnAttempt` for retry demos).
-
-REST:
-
-- `POST /api/jobs` submit
-- `GET /api/jobs` list
-- `GET /api/jobs/{id}` status (includes the DAG)
-- `GET /api/jobs/{id}/tasks` tasks only
-- `POST /api/jobs/{id}/cancel`
-- `GET /api/system` effective wiring (database/queue/lock/worker config) + counts, for the dashboard's wiring panel
-- `GET /metrics` Prometheus
-- `GET /health`
-- SignalR hub `/hubs/jobs` method `Subscribe(jobId)`, event `jobChanged`
-
-## Run the full stack (Phase 3–6)
-
-Docker was not available in the environment this repo was first built in. With Docker installed:
-
-```bash
-docker compose -f deploy/docker-compose.yml up --build
-```
-
-| Service | URL |
-| --- | --- |
-| Next.js dashboard | http://localhost:3001 |
-| API | http://localhost:5053/swagger |
-| Blazor dashboard | http://localhost:5081 |
-| Grafana (admin/admin) | http://localhost:3000 |
-| Prometheus | http://localhost:9090 |
-| RabbitMQ UI | http://localhost:15672 |
-
-Compose runs **two worker replicas**, Postgres, RabbitMQ, Redis (RedLock), Prometheus, and Grafana.
-
-## Load test
-
-```bash
-k6 run -e BASE_URL=http://localhost:5053 deploy/k6/jobs.js
-```
-
-Recorded numbers (local SQLite + in-process workers, 10 VUs / 30s, machine-dependent — re-run k6 on your stack and replace these):
-
-| Metric | Value |
-| --- | --- |
-| Checks | see k6 output after you run the script |
-| http_req_duration p95 | *not recorded here yet — Docker/k6 were not installed when this README was written* |
-| Throughput | *run `k6 run deploy/k6/jobs.js` against a live API and paste results* |
-
-## Architecture
+## Project layout
 
 ```
-Browser (Next.js) → API → Postgres
-                       → ITaskQueue (Channel or RabbitMQ)
-                            → Workers (in-process or TaskScheduler.Worker)
-                                 → Redis lock (optional)
-                                 → TaskExecutor (lease claim, idempotency, handlers, retry/DLQ)
-                                 → SignalR → Browser
+RelayForge/
+├── README.md
+├── docs/                 Original spec + plain-language project overview
+├── backend/
+│   ├── RelayForge.sln
+│   ├── src/
+│   │   ├── RelayForge.Api/            Minimal API host
+│   │   ├── RelayForge.Domain/         Entities, enums, DAG algorithms (no EF/ASP dependency)
+│   │   └── RelayForge.Infrastructure/ EF Core, in-process worker pool, orchestration
+│   └── tests/RelayForge.Domain.Tests/ Unit tests for the DAG logic
+└── frontend/              Next.js (TypeScript, App Router, Tailwind)
 ```
-
-Retry math lives in `ExponentialBackoffRetryPolicy` (hand-rolled exponential delay + jitter). `PollyRetryAdapter` maps the same delays onto a Polly pipeline.
-
-## Phases in this repo
-
-1. **Core engine** — EF models, Kahn topological sort, `Channel<T>` workers, submit/status  
-2. **Reliability** — backoff + jitter, leases + heartbeats + reaper, dead-letter table, idempotency keys  
-3. **Distributed scale** — MassTransit/RabbitMQ, worker process, RedLock  
-4. **Observability** — Serilog, OpenTelemetry (OTLP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set), prometheus-net, Grafana  
-5. **API & dashboard** — list/cancel, Blazor live DAG view, Next.js dashboard  
-6. **Deploy** — compose, GitHub Actions, k6, ADRs in `docs/adr`

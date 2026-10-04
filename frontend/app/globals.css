@@ -1,26 +1,172 @@
 @import "tailwindcss";
 
+/*
+ * Temper Route Card. Shell is graphite; state is the oxide colour steel takes when heated.
+ * Bare steel (pending) -> straw (running) -> temper blue (succeeded); bronze, cherry and
+ * oxide purple carry the failure family. Every state also has a distinct glyph shape.
+ */
 :root {
-  --background: #f7f7f8;
-  --foreground: #171717;
+  color-scheme: dark;
+
+  --background: #151a20;
+  --rail: #0f1318;
+  --foreground: #e8e4d9;
+  --surface: #1c232b;
+  --surface-raised: #232b34;
+  --border: #303a45;
+  --border-strong: #6b7786;
+  --muted: #9aa5b1;
+  --accent: #e8e4d9;
+  --accent-ink: #14181d;
+  --focus: #e6c25a;
+
+  --state-pending-bg: #232b34;
+  --state-pending-fg: #a9b3be;
+  --state-pending-ring: #646f7c;
+  --state-pending-solid: #7f8a96;
+
+  --state-running-bg: #2b2611;
+  --state-running-fg: #efcb62;
+  --state-running-ring: #836e29;
+  --state-running-solid: #e6c25a;
+
+  --state-succeeded-bg: #14264a;
+  --state-succeeded-fg: #8db0ff;
+  --state-succeeded-ring: #4b6eb6;
+  --state-succeeded-solid: #5b8def;
+
+  --state-failed-bg: #3a1518;
+  --state-failed-fg: #ff7a82;
+  --state-failed-ring: #b94a54;
+  --state-failed-solid: #e5484d;
+
+  --state-partiallyfailed-bg: #33230f;
+  --state-partiallyfailed-fg: #e0a566;
+  --state-partiallyfailed-ring: #906635;
+  --state-partiallyfailed-solid: #cf8f4e;
+
+  --state-cancelled-bg: #1f262e;
+  --state-cancelled-fg: #93a0ae;
+  --state-cancelled-ring: #65707d;
+  --state-cancelled-solid: #6c7885;
+
+  --state-deadlettered-bg: #2a1c3f;
+  --state-deadlettered-fg: #c9a2f5;
+  --state-deadlettered-ring: #815fb2;
+  --state-deadlettered-solid: #a97ae0;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --font-sans: var(--font-archivo);
+  --font-display: var(--font-display);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  background: var(--background);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  caret-color: var(--focus);
+}
+
+h1,
+h2 {
+  font-family: var(--font-display), var(--font-archivo), sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.05;
+  text-wrap: balance;
+}
+
+h1 {
+  margin-bottom: 0.4rem;
+  font-size: 2.25rem;
+}
+
+h2 {
+  font-size: 1.5rem;
+  margin-bottom: 0.25rem;
+}
+
+h3 {
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+table,
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: var(--state-running-solid);
+  color: #1a1608;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+a {
+  text-underline-offset: 3px;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+::placeholder {
+  color: #8a95a2;
+}
+
+/* One authored moment: a running step's heat bar creeps back and forth while it is working. */
+@keyframes heat-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(260%);
+  }
+}
+
+@keyframes heat-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.heat-sweep {
+  animation: heat-sweep 1.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+.heat-pulse {
+  animation: heat-pulse 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heat-sweep,
+  .heat-pulse {
+    animation: none;
+  }
 }

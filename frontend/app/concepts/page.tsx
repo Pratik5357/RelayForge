@@ -1,117 +1,87 @@
-import Link from "next/link";
+type Term = { name: string; definition: string; seeIn: string };
 
-type Entry = {
-  term: string;
-  plain: string;
-  where: string;
-};
-
-const ENTRIES: Entry[] = [
+const TERMS: Term[] = [
   {
-    term: "Job",
-    plain:
-      "One submission: a name plus a set of steps. It is the thing you watch on a run page.",
-    where: "Every row on the Runs page is a job.",
+    name: "Job",
+    definition: "The work you submit — made of one or more steps, with dependencies between them.",
+    seeIn: "Any scenario on the tour, or your own run on New run.",
   },
   {
-    term: "Step (task)",
-    plain:
-      "One unit of work inside a job — the API calls these tasks. A step names the steps it must wait for, and nothing else about ordering is specified.",
-    where: "Each card in a run's columns is one step.",
+    name: "Step (task)",
+    definition: "One unit of work inside a job. A job can have one step or many.",
+    seeIn: "Each box in the step graph on a run's page.",
   },
   {
-    term: "DAG",
-    plain:
-      "Short for directed acyclic graph: the shape you get when steps point at the steps they depend on, with no loops. It is what lets the engine work out an order by itself.",
-    where:
-      "The columns on a run page. A job whose steps depend on each other in a circle is rejected when you submit it.",
+    name: "DAG (dependency graph)",
+    definition:
+      "A map of which steps depend on which others, with no circular dependencies — that's what lets RelayForge figure out a safe order to run things in.",
+    seeIn: "The stages on a run's page: each stage only starts once everything in the stage before it has succeeded.",
   },
   {
-    term: "Dependency level",
-    plain:
-      "A column. Everything in one column depends only on earlier columns, so all of it can run at once.",
-    where: "Demo 2 in the tour, where two shards share a column.",
+    name: "Dependency level",
+    definition:
+      "How many steps deep a step is from the steps it ultimately depends on. Steps in the same level can run at the same time.",
+    seeIn: "Scenario 2 (parallelism) — two steps in the same level start together.",
   },
   {
-    term: "Attempt",
-    plain:
-      "One try at running a step. A step gets a fixed number of attempts before the engine stops trying.",
-    where: "The 'attempts used' line on each step card.",
+    name: "Attempt",
+    definition: "One try at running a step. A step can be given a budget of several attempts before it's given up on.",
+    seeIn: "The \"N/M tries\" count on any step.",
   },
   {
-    term: "Exponential backoff with jitter",
-    plain:
-      "The waiting rule between attempts: each retry waits roughly twice as long as the last, plus a small random amount. Doubling stops a struggling dependency from being hammered; the randomness stops every retry in the fleet from firing at the same instant.",
-    where: "Demo 3 — the pauses between attempts visibly grow.",
+    name: "Exponential backoff with jitter",
+    definition:
+      "Waiting a little longer before each retry (doubling the delay each time, up to a cap), with some randomness mixed in so retries don't all land at once.",
+    seeIn: "Scenario 3 — watch the \"retrying in Ns\" delay grow between attempts.",
   },
   {
-    term: "Dead letter",
-    plain:
-      "Where a step goes when it has used every attempt. It is set aside for a human instead of being retried forever, and the job is reported as failed rather than stuck.",
-    where: "Demo 4, and the dead-lettered count on the home page.",
+    name: "Dead letter",
+    definition: "What happens to a step that's exhausted its retry budget without succeeding — it's set aside as a known failure instead of retried forever.",
+    seeIn: "Scenario 4, and any step marked Parked.",
   },
   {
-    term: "Lease",
-    plain:
-      "A time-limited claim a worker puts on a step while running it. If the worker dies, the claim expires and another worker picks the step up — that is how a crash mid-run recovers without anyone intervening.",
-    where: "The lease length is in the wiring panel on the home page.",
+    name: "Lease",
+    definition:
+      "A time-bound claim a worker holds on a step while running it. If the step's lease expires before it finishes — for instance because the process restarted — RelayForge treats it as crashed and gives it back to the queue.",
+    seeIn: "Not directly visible, but it's what lets a task recover after the API process is restarted mid-run.",
   },
   {
-    term: "Heartbeat",
-    plain:
-      "A periodic 'still alive' note each worker writes. Missing heartbeats are how the system notices a worker is gone.",
-    where: "'Workers seen' in the wiring panel.",
+    name: "Idempotency key",
+    definition:
+      "A stable identifier for a step that stays the same across every one of its retries, so two overlapping attempts at the same step can be told apart from two different steps.",
+    seeIn: "Included in each task's data; it's what keeps a reclaimed lease from double-running a step.",
   },
   {
-    term: "Idempotency key",
-    plain:
-      "A per-step fingerprint recorded on success. If the same step somehow gets delivered twice, the second delivery is recognised and skipped instead of doing the work again.",
-    where:
-      "Not visible in the UI by design — it is what keeps a retry from double-charging a card, so to speak.",
-  },
-  {
-    term: "At-least-once delivery",
-    plain:
-      "The guarantee a message queue actually gives: a message will arrive, possibly more than once. Idempotency keys and leases are the reason that is safe here.",
-    where: "Applies when the queue in the wiring panel says RabbitMq.",
-  },
-  {
-    term: "Worker",
-    plain:
-      "The thing that takes a ready step, runs it, and records the outcome. Workers can run inside the API process or as separate processes on other machines; the code is the same either way.",
-    where: "'Worker slots' in the wiring panel tells you which mode is running.",
+    name: "Cancellation",
+    definition:
+      "Stopping a job that's still going. Steps that haven't started yet are called off immediately; a step already in flight is left to finish naturally before the job is marked Cancelled.",
+    seeIn: "Scenario 6, via the Cancel button on any running job's detail page.",
   },
 ];
 
 export default function ConceptsPage() {
   return (
-    <section className="space-y-6">
-      <div className="space-y-2">
-        <h1 className="text-xl font-semibold">Glossary</h1>
-        <p className="max-w-2xl text-sm text-zinc-600 dark:text-zinc-400">
-          Every term this dashboard uses, in plain words, with where to see the thing itself.
-          If you are starting from scratch,{" "}
-          <Link href="/" className="underline">
-            the tour
-          </Link>{" "}
-          is the faster route.
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-4xl leading-none">Glossary</h1>
+        <p className="max-w-2xl text-[var(--muted)]">
+          The ideas behind RelayForge in plain language, and where to see each one happen.
         </p>
       </div>
-
-      <dl className="space-y-4">
-        {ENTRIES.map((entry) => (
-          <div
-            key={entry.term}
-            className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
-          >
-            <dt className="font-medium">{entry.term}</dt>
-            <dd className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{entry.plain}</dd>
-            <dd className="mt-2 text-xs text-zinc-500">
-              <span className="font-medium">Where to see it:</span> {entry.where}
+      <dl className="divide-y divide-[var(--border)] rounded-[4px] border border-[var(--border)] bg-[var(--surface)]">
+        {TERMS.map((term) => (
+          <div key={term.name} className="grid gap-x-8 gap-y-1 px-5 py-4 md:grid-cols-[14rem_1fr]">
+            <dt className="font-semibold">{term.name}</dt>
+            <dd className="space-y-1.5">
+              <p className="max-w-prose text-[var(--muted)]">{term.definition}</p>
+              <p className="max-w-prose text-sm">
+                <span className="font-semibold">See it:</span>{" "}
+                <span className="text-[var(--muted)]">{term.seeIn}</span>
+              </p>
             </dd>
           </div>
         ))}
       </dl>
-    </section>
+    </div>
   );
 }

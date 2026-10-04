@@ -1,175 +1,127 @@
-import { getJob, getSystemInfo, hubUrl, listJobs } from "./api";
-import {
-  isJobFinished,
-  type JobChangedEvent,
-  type JobStatus,
-  type SystemInfo,
-} from "./types";
+import { ApiError, apiBaseUrl, getJob } from "./api";
+import { isJobFinished, type JobDetail } from "./types";
 
-/** Where the current data is coming from, surfaced in the UI. */
+export type JobChangedEvent = {
+  jobId: string;
+  jobState: string;
+  taskId: string | null;
+  taskName: string | null;
+  taskState: string | null;
+  message: string;
+};
+
 export type LiveSource = "connecting" | "signalr" | "polling" | "stopped";
 
-export type Snapshot<T> = {
-  data: T | null;
-  error: string | null;
-  loading: boolean;
+type WatchJobCallbacks = {
+  onUpdate: (job: JobDetail) => void;
+  onEvent?: (evt: JobChangedEvent) => void;
+  onSourceChange?: (source: LiveSource) => void;
+  onError?: (message: string | null) => void;
 };
+
+const POLL_INTERVAL_MS = 1500;
 
 /**
- * Snapshots are pushed as updater functions so a transient fetch error keeps the
- * last good data on screen. React's `setState` accepts exactly this shape.
+ * Watches one job's state: tries a SignalR push connection first, falls back to polling if
+ * the connection can't be established or drops, and stops updating once the job is terminal.
+ * Returns a cleanup function.
  */
-type Emit<T> = (update: (previous: Snapshot<T>) => Snapshot<T>) => void;
-
-export const initialSnapshot = <T>(): Snapshot<T> => ({
-  data: null,
-  error: null,
-  loading: true,
-});
-
-function describe(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-/** Re-reads the job list on an interval until stopped. */
-export function watchJobs(emit: Emit<JobStatus[]>, intervalMs: number): () => void {
+export function watchJob(jobId: string, callbacks: WatchJobCallbacks): () => void {
   let stopped = false;
-
-  const tick = async () => {
-    try {
-      const jobs = await listJobs();
-      if (!stopped) {
-        emit((previous) => ({ ...previous, data: jobs, error: null, loading: false }));
-      }
-    } catch (error) {
-      if (!stopped) {
-        emit((previous) => ({ ...previous, error: describe(error), loading: false }));
-      }
-    }
-  };
-
-  void tick();
-  const timer = setInterval(() => void tick(), intervalMs);
-
-  return () => {
-    stopped = true;
-    clearInterval(timer);
-  };
-}
-
-/** Re-reads the wiring/counts panel on an interval until stopped. */
-export function watchSystem(emit: Emit<SystemInfo>, intervalMs: number): () => void {
-  let stopped = false;
-
-  const tick = async () => {
-    try {
-      const info = await getSystemInfo();
-      if (!stopped) {
-        emit((previous) => ({ ...previous, data: info, error: null, loading: false }));
-      }
-    } catch (error) {
-      if (!stopped) {
-        emit((previous) => ({ ...previous, error: describe(error), loading: false }));
-      }
-    }
-  };
-
-  void tick();
-  const timer = setInterval(() => void tick(), intervalMs);
-
-  return () => {
-    stopped = true;
-    clearInterval(timer);
-  };
-}
-
-export type JobWatcher = {
-  /** Forces a re-read, e.g. right after a cancel. */
-  refresh: () => void;
-  stop: () => void;
-};
-
-/**
- * Follows one job. The API pushes `jobChanged` over SignalR as tasks move
- * through the DAG; if the hub cannot be reached we fall back to polling so the
- * page still shows progress. Both stop once the job reaches a terminal state.
- */
-export type JobHandlers = {
-  emit: Emit<JobStatus>;
-  onSource: (source: LiveSource) => void;
-  /** Called for every `jobChanged` push, so the page can show an event log. */
-  onEvent?: (event: JobChangedEvent) => void;
-};
-
-export function watchJob(
-  id: string,
-  { emit, onSource, onEvent }: JobHandlers,
-  pollMs = 1500,
-): JobWatcher {
-  let stopped = false;
-  let finished = false;
-  let poll: ReturnType<typeof setInterval> | undefined;
+  let pollTimer: ReturnType<typeof setTimeout> | undefined;
   let connection: import("@microsoft/signalr").HubConnection | undefined;
 
-  const read = async () => {
-    if (stopped) return;
+  function setSource(source: LiveSource) {
+    if (!stopped) callbacks.onSourceChange?.(source);
+  }
+
+  async function refreshOnce(): Promise<JobDetail | null> {
     try {
-      const job = await getJob(id);
-      if (stopped) return;
-      finished = isJobFinished(job.state);
-      emit((previous) => ({ ...previous, data: job, error: null, loading: false }));
-      if (finished) {
-        onSource("stopped");
+      const job = await getJob(jobId);
+      if (stopped) return job;
+      callbacks.onUpdate(job);
+      callbacks.onError?.(null);
+      return job;
+    } catch (err) {
+      if (!stopped) {
+        callbacks.onError?.(err instanceof ApiError ? err.message : "Could not reach the API.");
       }
-    } catch (error) {
-      if (stopped) return;
-      emit((previous) => ({ ...previous, error: describe(error), loading: false }));
+      return null;
     }
-  };
+  }
 
-  const startPolling = () => {
-    if (stopped || poll) return;
-    if (!finished) {
-      onSource("polling");
-    }
-    poll = setInterval(() => {
-      if (!finished) void read();
-    }, pollMs);
-  };
+  function startPolling() {
+    if (stopped) return;
+    setSource("polling");
 
-  void read();
-
-  // Imported lazily so the SignalR client stays out of the initial bundle.
-  void import("@microsoft/signalr")
-    .then(async ({ HubConnectionBuilder, LogLevel }) => {
+    async function poll() {
       if (stopped) return;
-      connection = new HubConnectionBuilder()
-        .withUrl(hubUrl)
+      const job = await refreshOnce();
+      if (stopped) return;
+      if (job && isJobFinished(job.state)) {
+        setSource("stopped");
+        return;
+      }
+      pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
+    }
+
+    poll();
+  }
+
+  async function start() {
+    setSource("connecting");
+    const initial = await refreshOnce();
+    if (stopped) return;
+
+    if (initial && isJobFinished(initial.state)) {
+      setSource("stopped");
+      return;
+    }
+
+    try {
+      const signalR = await import("@microsoft/signalr");
+      connection = new signalR.HubConnectionBuilder()
+        .withUrl(`${apiBaseUrl}/hubs/jobs`, { withCredentials: true })
         .withAutomaticReconnect()
-        .configureLogging(LogLevel.Warning)
         .build();
 
-      connection.on("jobChanged", (event: JobChangedEvent) => {
-        onEvent?.(event);
-        void read();
+      connection.on("jobChanged", (evt: JobChangedEvent) => {
+        if (stopped || evt.jobId !== jobId) return;
+        callbacks.onEvent?.(evt);
+        void refreshOnce().then((job) => {
+          if (!stopped && job && isJobFinished(job.state)) {
+            setSource("stopped");
+            connection?.stop().catch(() => {});
+          }
+        });
       });
-      connection.onreconnecting(() => onSource("connecting"));
-      connection.onreconnected(() => onSource(finished ? "stopped" : "signalr"));
-      connection.onclose(() => startPolling());
+
+      connection.onreconnecting(() => setSource("connecting"));
+      connection.onreconnected(() => {
+        setSource("signalr");
+        connection?.invoke("Subscribe", jobId).catch(() => {});
+      });
+      connection.onclose(() => {
+        if (!stopped) startPolling();
+      });
 
       await connection.start();
-      await connection.invoke("Subscribe", id);
-      if (stopped) return;
-      onSource(finished ? "stopped" : "signalr");
-    })
-    .catch(startPolling);
+      if (stopped) {
+        await connection.stop();
+        return;
+      }
+      await connection.invoke("Subscribe", jobId);
+      setSource("signalr");
+    } catch {
+      if (!stopped) startPolling();
+    }
+  }
 
-  return {
-    refresh: () => void read(),
-    stop: () => {
-      stopped = true;
-      if (poll) clearInterval(poll);
-      void connection?.stop();
-    },
+  void start();
+
+  return function stop() {
+    stopped = true;
+    if (pollTimer) clearTimeout(pollTimer);
+    connection?.stop().catch(() => {});
   };
 }

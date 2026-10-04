@@ -1,95 +1,72 @@
-// Mirrors the DTOs in backend/src/TaskScheduler.Infrastructure/Jobs/JobService.cs.
+export type JobState =
+  | "Pending"
+  | "Running"
+  | "Succeeded"
+  | "Failed"
+  | "PartiallyFailed"
+  | "Cancelled";
 
-export const TASK_STATES = [
-  "Pending",
-  "Running",
-  "Succeeded",
-  "Failed",
-  "DeadLettered",
-  "Cancelled",
-] as const;
+export type TaskState =
+  | "Pending"
+  | "Running"
+  | "Succeeded"
+  | "Failed"
+  | "DeadLettered"
+  | "Cancelled";
 
-export const JOB_STATES = [
-  "Pending",
-  "Running",
-  "Succeeded",
-  "Failed",
-  "PartiallyFailed",
-  "Cancelled",
-] as const;
-
-export type TaskState = (typeof TASK_STATES)[number];
-export type JobState = (typeof JOB_STATES)[number];
-
-export type TaskStatus = {
+export type JobSummary = {
   id: string;
-  key: string;
-  /** Handler type: echo, delay or fail. */
-  type: string;
-  state: TaskState;
-  attemptCount: number;
-  maxAttempts: number;
-  lastError: string | null;
-  resultJson: string | null;
-  dependsOn: string[];
-};
-
-export type JobStatus = {
-  id: string;
-  name: string;
+  name: string | null;
+  scenarioKey: string | null;
   state: JobState;
   createdAt: string;
-  updatedAt: string;
+  startedAt: string | null;
   completedAt: string | null;
-  tasks: TaskStatus[];
+  taskCount: number;
 };
 
-export type SubmitTask = {
+export type JobTaskDto = {
+  id: string;
+  name: string;
+  state: TaskState;
+  dependsOn: string[];
+  startedAt: string | null;
+  completedAt: string | null;
+  errorMessage: string | null;
+  attemptCount: number;
+  maxAttempts: number;
+  nextAttemptAt: string | null;
+  idempotencyKey: string;
+};
+
+export type JobDetail = {
+  id: string;
+  name: string | null;
+  scenarioKey: string | null;
+  state: JobState;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  cancellationRequestedAt: string | null;
+  tasks: JobTaskDto[];
+};
+
+export type SubmitJobTaskRequest = {
   key: string;
-  type: string;
-  payload?: unknown;
-  dependsOn?: string[];
+  name: string;
+  simulatedDurationMs: number;
+  dependsOn: string[];
   maxAttempts?: number;
+  failUntilAttempt?: number;
 };
 
 export type SubmitJobRequest = {
-  name: string;
-  tasks: SubmitTask[];
+  name?: string;
+  scenarioKey?: string;
+  tasks: SubmitJobTaskRequest[];
 };
 
-/** Response of `GET /api/system` (see SystemInfoService). */
-export type SystemInfo = {
-  wiring: {
-    database: string;
-    queue: string;
-    lockProvider: string;
-    workerCount: number;
-    inProcessWorkers: boolean;
-    leaseSeconds: number;
-    heartbeatSeconds: number;
-  };
-  counts: {
-    jobs: number;
-    tasks: number;
-    deadLetters: number;
-    liveWorkers: number;
-    jobsByState: Record<string, number>;
-    tasksByState: Record<string, number>;
-  };
-  serverTime: string;
-};
-
-/** Payload of the SignalR `jobChanged` message (see JobEventsHub). */
-export type JobChangedEvent = {
-  jobId: string;
-  jobState: string;
-  taskId: string | null;
-  taskKey: string | null;
-  taskState: string | null;
-  message: string;
-};
-
-const TERMINAL_JOB_STATES: JobState[] = [
+export const TERMINAL_JOB_STATES: JobState[] = [
   "Succeeded",
   "Failed",
   "PartiallyFailed",
