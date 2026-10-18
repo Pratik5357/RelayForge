@@ -1,40 +1,44 @@
-import { type ButtonHTMLAttributes, forwardRef } from "react";
+import type { ButtonHTMLAttributes } from "react";
 
-type ButtonVariant = "primary" | "secondary" | "ghost";
-type ButtonSize = "sm" | "md";
+type Variant = "primary" | "secondary" | "go" | "board";
+type Size = "sm" | "md" | "lg";
 
-type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: ButtonVariant;
-  size?: ButtonSize;
+const VARIANT: Record<Variant, string> = {
+  primary: "bg-ink text-white hover:bg-[var(--ink-hover)]",
+  secondary: "bg-transparent text-ink shadow-[inset_0_0_0_1.5px_var(--ink)] hover:bg-ink hover:text-white",
+  go: "bg-amber text-ink font-extrabold hover:bg-[var(--amber-hover)]",
+  board: "bg-board-control text-board-text hover:bg-amber hover:text-ink",
 };
 
-const variantClasses: Record<ButtonVariant, string> = {
-  primary:
-    "border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] hover:bg-white active:translate-y-px",
-  secondary:
-    "border border-[var(--border-strong)] bg-[var(--surface)] text-[var(--foreground)] hover:bg-[var(--surface-raised)] hover:border-[var(--muted)]",
-  ghost: "border border-transparent text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]",
+const SIZE: Record<Size, string> = {
+  sm: "min-h-11 px-4 text-sm",
+  md: "min-h-12 px-[22px] text-base",
+  lg: "min-h-[54px] px-6 text-[17px]",
 };
 
-const sizeClasses: Record<ButtonSize, string> = {
-  sm: "h-8 px-3 text-sm",
-  md: "h-9 px-4 text-sm",
-};
-
-export function buttonClasses(variant: ButtonVariant = "primary", size: ButtonSize = "md") {
-  return `inline-flex items-center justify-center gap-2 rounded-[3px] font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${variantClasses[variant]} ${sizeClasses[size]}`;
+export function buttonClasses(variant: Variant = "primary", size: Size = "md") {
+  return `press inline-flex items-center justify-center gap-2.5 rounded-md font-bold no-underline disabled:cursor-not-allowed disabled:opacity-50 ${VARIANT[variant]} ${SIZE[size]}`;
 }
 
-export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { variant = "primary", size = "md", className = "", disabled, ...props },
-  ref,
-) {
+type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: Variant;
+  size?: Size;
+};
+
+export function Button({ variant = "primary", size = "md", className = "", type = "button", ...props }: ButtonProps) {
+  return <button type={type} className={`${buttonClasses(variant, size)} ${className}`} {...props} />;
+}
+
+export function Arrow({ direction = "right" }: { direction?: "right" | "left" | "down" }) {
+  const d =
+    direction === "down"
+      ? "M8 3v10M4 9l4 4 4-4"
+      : direction === "left"
+        ? "M13 8H3M7 4 3 8l4 4"
+        : "M3 8h10M9 4l4 4-4 4";
   return (
-    <button
-      ref={ref}
-      disabled={disabled}
-      className={`${buttonClasses(variant, size)} ${className}`}
-      {...props}
-    />
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+      <path d={d} fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
-});
+}

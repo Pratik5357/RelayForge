@@ -1,23 +1,21 @@
 import type { Metadata } from "next";
-import { Archivo, Big_Shoulders, Geist_Mono } from "next/font/google";
-import { NavRail } from "@/components/NavRail";
+import { Atkinson_Hyperlegible_Mono, Atkinson_Hyperlegible_Next } from "next/font/google";
+import { TopBar } from "@/components/TopBar";
+import { Toaster } from "@/components/Toaster";
 import "./globals.css";
 
-const archivo = Archivo({
-  variable: "--font-archivo",
+// Next has no precomputed fallback metrics for the Atkinson families, so skip the adjusted fallback.
+// Turbopack still logs "Failed to find font override values" for them anyway; it's harmless.
+const atkinson = Atkinson_Hyperlegible_Next({
+  variable: "--font-atkinson",
   subsets: ["latin"],
-});
-
-const display = Big_Shoulders({
-  variable: "--font-display",
-  subsets: ["latin"],
-  // Next cannot compute fallback metrics for this family and warns on every request.
   adjustFontFallback: false,
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const atkinsonMono = Atkinson_Hyperlegible_Mono({
+  variable: "--font-atkinson-mono",
   subsets: ["latin"],
+  adjustFontFallback: false,
 });
 
 export const metadata: Metadata = {
@@ -27,13 +25,14 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html
-      lang="en"
-      className={`${archivo.variable} ${display.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full md:grid md:grid-cols-[14rem_minmax(0,1fr)]">
-        <NavRail />
-        <main className="mx-auto w-full max-w-6xl px-5 py-8 md:px-10 md:py-10">{children}</main>
+    <html lang="en" className={`${atkinson.variable} ${atkinsonMono.variable} h-full antialiased`}>
+      <body className="min-h-full">
+        <Toaster>
+          <TopBar />
+          <main className="mx-auto w-full max-w-[1320px] px-4 pb-24 pt-10 sm:px-6 md:pt-14 lg:px-10">
+            {children}
+          </main>
+        </Toaster>
       </body>
     </html>
   );

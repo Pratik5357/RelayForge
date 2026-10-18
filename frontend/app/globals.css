@@ -1,105 +1,87 @@
 @import "tailwindcss";
 
 /*
- * Temper Route Card. Shell is graphite; state is the oxide colour steel takes when heated.
- * Bare steel (pending) -> straw (running) -> temper blue (succeeded); bronze, cherry and
- * oxide purple carry the failure family. Every state also has a distinct glyph shape.
+ * Departures. A run is a departures board, a tour demo is a boarding pass.
+ * Light concourse ground, black board panels, one hyperlegible family. Amber means working;
+ * every state is spelled out in words on its remark, never by colour alone.
  */
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 
-  --background: #151a20;
-  --rail: #0f1318;
-  --foreground: #e8e4d9;
-  --surface: #1c232b;
-  --surface-raised: #232b34;
-  --border: #303a45;
-  --border-strong: #6b7786;
-  --muted: #9aa5b1;
-  --accent: #e8e4d9;
-  --accent-ink: #14181d;
-  --focus: #e6c25a;
+  --concourse: #e4e6e3;
+  --paper: #ffffff;
+  --field: #f4f5f2;
+  --field-focus: #fffbea;
+  --hairline: #c4c8c2;
+  --hairline-soft: #daddd8;
+  --ink: #121412;
+  --ink-hover: #30342f;
+  --muted: #4e534d;
+  --label: #5c615b;
+  --field-rule: #9da29b;
+  --amber: #ffc22e;
+  --amber-hover: #ffd25e;
+  --error: #b3261e;
 
-  --state-pending-bg: #232b34;
-  --state-pending-fg: #a9b3be;
-  --state-pending-ring: #646f7c;
-  --state-pending-solid: #7f8a96;
+  --board: #121412;
+  --board-raised: #1b1e1b;
+  --board-control: #262a26;
+  --board-rule: #2a2e2a;
+  --board-perf: #4a4f49;
+  --board-text: #f2f0e8;
+  --board-muted: #a9aea6;
+  --board-soft: #c9cdc5;
 
-  --state-running-bg: #2b2611;
-  --state-running-fg: #efcb62;
-  --state-running-ring: #836e29;
-  --state-running-solid: #e6c25a;
+  --remark-pending: #a9aea6;
+  --remark-running: #ffc22e;
+  --remark-succeeded: #5bd687;
+  --remark-failed: #ff6e5e;
+  --remark-partiallyfailed: #ffa24a;
+  --remark-deadlettered: #c9a3ff;
+  --remark-cancelled: #a9aea6;
 
-  --state-succeeded-bg: #14264a;
-  --state-succeeded-fg: #8db0ff;
-  --state-succeeded-ring: #4b6eb6;
-  --state-succeeded-solid: #5b8def;
-
-  --state-failed-bg: #3a1518;
-  --state-failed-fg: #ff7a82;
-  --state-failed-ring: #b94a54;
-  --state-failed-solid: #e5484d;
-
-  --state-partiallyfailed-bg: #33230f;
-  --state-partiallyfailed-fg: #e0a566;
-  --state-partiallyfailed-ring: #906635;
-  --state-partiallyfailed-solid: #cf8f4e;
-
-  --state-cancelled-bg: #1f262e;
-  --state-cancelled-fg: #93a0ae;
-  --state-cancelled-ring: #65707d;
-  --state-cancelled-solid: #6c7885;
-
-  --state-deadlettered-bg: #2a1c3f;
-  --state-deadlettered-fg: #c9a2f5;
-  --state-deadlettered-ring: #815fb2;
-  --state-deadlettered-solid: #a97ae0;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-surface: var(--surface);
-  --color-border: var(--border);
+  --color-concourse: var(--concourse);
+  --color-paper: var(--paper);
+  --color-field: var(--field);
+  --color-hairline: var(--hairline);
+  --color-ink: var(--ink);
   --color-muted: var(--muted);
-  --font-sans: var(--font-archivo);
-  --font-display: var(--font-display);
-  --font-mono: var(--font-geist-mono);
+  --color-label: var(--label);
+  --color-amber: var(--amber);
+  --color-board: var(--board);
+  --color-board-raised: var(--board-raised);
+  --color-board-control: var(--board-control);
+  --color-board-rule: var(--board-rule);
+  --color-board-text: var(--board-text);
+  --color-board-muted: var(--board-muted);
+  --color-board-soft: var(--board-soft);
+  --font-sans: var(--font-atkinson);
+  --font-mono: var(--font-atkinson-mono);
 }
 
 html {
-  background: var(--background);
+  background: var(--concourse);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans), system-ui, sans-serif;
-  font-size: 0.9375rem;
+  background: var(--concourse);
+  color: var(--ink);
+  font-family: var(--font-atkinson), system-ui, sans-serif;
+  font-size: 1rem;
   line-height: 1.55;
-  caret-color: var(--focus);
+  caret-color: var(--ink);
 }
 
 h1,
-h2 {
-  font-family: var(--font-display), var(--font-archivo), sans-serif;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  line-height: 1.05;
-  text-wrap: balance;
-}
-
-h1 {
-  margin-bottom: 0.4rem;
-  font-size: 2.25rem;
-}
-
-h2 {
-  font-size: 1.5rem;
-  margin-bottom: 0.25rem;
-}
-
+h2,
 h3 {
+  font-weight: 800;
   text-wrap: balance;
 }
 
@@ -113,14 +95,23 @@ table,
 }
 
 ::selection {
-  background: var(--state-running-solid);
-  color: #1a1608;
+  background: var(--amber);
+  color: var(--ink);
+}
+
+::placeholder {
+  color: #767b74;
 }
 
 :focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-  border-radius: 2px;
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 5px var(--amber);
+}
+
+.on-board :focus-visible,
+.on-board:focus-visible {
+  outline-color: var(--board-text);
 }
 
 a {
@@ -129,44 +120,341 @@ a {
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--border-strong) transparent;
+  scrollbar-color: var(--field-rule) transparent;
 }
 
-::placeholder {
-  color: #8a95a2;
+/* Small uppercase field and column labels: the only tracked caps in the system. */
+.label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-/* One authored moment: a running step's heat bar creeps back and forth while it is working. */
-@keyframes heat-sweep {
-  0% {
-    transform: translateX(-100%);
+/* ---------- Press feedback ---------- */
+
+.press {
+  transition:
+    transform 160ms var(--ease-out),
+    background-color 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.press:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* ---------- Page entrance (first paint of a route) ---------- */
+
+/* `backwards`, not `both`: once the entrance ends it must let go, or its final frame would
+   override the inline styles Motion uses for scroll reveals on the same elements. */
+.page-enter > * {
+  animation: page-in 420ms var(--ease-out) backwards;
+}
+.page-enter > :nth-child(2) {
+  animation-delay: 50ms;
+}
+.page-enter > :nth-child(3) {
+  animation-delay: 100ms;
+}
+.page-enter > :nth-child(4) {
+  animation-delay: 150ms;
+}
+.page-enter > :nth-child(n + 5) {
+  animation-delay: 200ms;
+}
+
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
   }
-  100% {
-    transform: translateX(260%);
+  to {
+    opacity: 1;
+    transform: none;
   }
 }
 
-@keyframes heat-pulse {
+/* Black board panels drop in like a sign band. */
+.board-reveal {
+  animation: board-reveal 560ms var(--ease-in-out) 120ms both;
+}
+
+@keyframes board-reveal {
+  from {
+    clip-path: inset(0 0 100% 0 round 12px);
+  }
+  to {
+    clip-path: inset(0 0 0 0 round 12px);
+  }
+}
+
+/* The Overview headline: the one authored entrance. */
+.headline-reveal {
+  animation: headline-reveal 720ms var(--ease-in-out) both;
+}
+
+@keyframes headline-reveal {
+  from {
+    clip-path: inset(0 0 100% 0);
+    transform: translateY(24px);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+    transform: none;
+  }
+}
+
+.fade-up {
+  animation: page-in 420ms var(--ease-out) backwards;
+}
+
+/* Timeline bars draw in from the left the first time they render. */
+.bar-draw {
+  animation: bar-draw 600ms var(--ease-in-out) both;
+}
+
+@keyframes bar-draw {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+/* The cancel moment draws down the timeline once. */
+.cancel-mark {
+  animation: cancel-mark 500ms var(--ease-out) both;
+}
+
+@keyframes cancel-mark {
+  from {
+    clip-path: inset(0 -200px 100% -200px);
+  }
+  to {
+    clip-path: inset(0 -200px 0 -200px);
+  }
+}
+
+/* Tearing the stub: a small tug on press. */
+.stub {
+  transform-origin: 0 0;
+  transition: transform 160ms var(--ease-out);
+}
+.stub:has(:active) {
+  transform: rotate(-2deg) translate(3px, 2px);
+}
+
+/* ---------- Running lamp ---------- */
+
+@keyframes lamp-blink {
   0%,
-  100% {
+  55% {
     opacity: 1;
   }
-  50% {
-    opacity: 0.35;
+  56%,
+  100% {
+    opacity: 0.25;
   }
 }
 
-.heat-sweep {
-  animation: heat-sweep 1.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+.lamp-blink {
+  animation: lamp-blink 1.1s steps(1, end) infinite;
 }
 
-.heat-pulse {
-  animation: heat-pulse 1.4s ease-in-out infinite;
+@keyframes ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+.ping {
+  animation: ping 1.6s var(--ease-out) infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin {
+  animation: spin 700ms linear infinite;
+}
+
+/* ---------- Tooltip (CSS only, grows from its bar) ---------- */
+
+.tip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  z-index: 3;
+  transform: translateX(-50%) scale(0.97);
+  transform-origin: 50% 100%;
+  opacity: 0;
+  pointer-events: none;
+  white-space: nowrap;
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: var(--board);
+  color: var(--board-text);
+  font-size: 12px;
+  font-weight: 600;
+  transition:
+    opacity 125ms var(--ease-out),
+    transform 125ms var(--ease-out);
+}
+
+.has-tip:focus-visible .tip {
+  opacity: 1;
+  transform: translateX(-50%) scale(1);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .has-tip:hover .tip {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+    transition-delay: 250ms;
+  }
+  .pass:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      0 1px 0 rgb(18 20 18 / 0.06),
+      0 18px 30px -18px rgb(18 20 18 / 0.45);
+  }
+}
+
+.pass {
+  transition:
+    transform 220ms var(--ease-out),
+    box-shadow 220ms ease;
+}
+
+/* ---------- Native dialog used for overlays ---------- */
+
+dialog.overlay {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow: hidden;
+}
+
+dialog.overlay::backdrop {
+  background: transparent;
+}
+
+/* ---------- Route transitions (React ViewTransition) ---------- */
+
+::view-transition {
+  pointer-events: none;
+}
+
+::view-transition-group(site-header) {
+  animation: none;
+  z-index: 100;
+}
+::view-transition-old(site-header) {
+  display: none;
+}
+::view-transition-new(site-header) {
+  animation: none;
+}
+
+::view-transition-old(.nav-forward) {
+  --slide-offset: -16px;
+  animation:
+    150ms var(--ease-out) both vt-fade reverse,
+    150ms var(--ease-out) both vt-slide reverse;
+}
+::view-transition-new(.nav-forward) {
+  --slide-offset: 16px;
+  animation:
+    260ms var(--ease-out) 90ms both vt-fade,
+    260ms var(--ease-out) 90ms both vt-slide;
+}
+::view-transition-old(.nav-back) {
+  --slide-offset: 16px;
+  animation:
+    150ms var(--ease-out) both vt-fade reverse,
+    150ms var(--ease-out) both vt-slide reverse;
+}
+::view-transition-new(.nav-back) {
+  --slide-offset: -16px;
+  animation:
+    260ms var(--ease-out) 90ms both vt-fade,
+    260ms var(--ease-out) 90ms both vt-slide;
+}
+
+@keyframes vt-fade {
+  from {
+    filter: blur(2px);
+    opacity: 0;
+  }
+  to {
+    filter: blur(0);
+    opacity: 1;
+  }
+}
+
+@keyframes vt-slide {
+  from {
+    translate: var(--slide-offset);
+  }
+  to {
+    translate: 0;
+  }
+}
+
+/* ---------- Reduced motion: fewer and gentler, not zero ---------- */
+
+@keyframes fade-only {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .heat-sweep,
-  .heat-pulse {
+  .page-enter > *,
+  .fade-up,
+  .headline-reveal {
+    animation: fade-only 200ms ease backwards;
+  }
+  .board-reveal,
+  .bar-draw,
+  .cancel-mark,
+  .lamp-blink,
+  .ping {
     animation: none;
+  }
+  .spin {
+    animation-duration: 1.6s;
+  }
+  .stub:has(:active),
+  .press:active:not(:disabled) {
+    transform: none;
+  }
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: 150ms ease both vt-fade !important;
+  }
+  ::view-transition-old(*) {
+    animation-direction: reverse !important;
   }
 }

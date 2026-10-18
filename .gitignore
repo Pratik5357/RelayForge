@@ -14,3 +14,16 @@ appsettings.Local.json
 node_modules/
 .next/
 *.tsbuildinfo
+
+# local Docker PostgreSQL password
+.env
+.env.*
+!.env.example
+
+# AI assistant / tooling files (local to each developer)
+.claude/
+.impeccable/
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+.vscode/

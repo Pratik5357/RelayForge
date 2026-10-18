@@ -1,21 +1,14 @@
-import { type InputHTMLAttributes, forwardRef } from "react";
+import type { InputHTMLAttributes, LabelHTMLAttributes } from "react";
 
-export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
-  function Input({ className = "", ...props }, ref) {
-    return (
-      <input
-        ref={ref}
-        className={`w-full rounded-[3px] border border-[var(--border-strong)] bg-[var(--background)] h-9 px-3 text-sm text-[var(--foreground)] transition-colors duration-150 hover:border-[var(--muted)] focus-visible:border-[var(--focus)] focus-visible:outline-offset-0 ${className}`}
-        {...props}
-      />
-    );
-  },
-);
+export function FieldLabel({ className = "", ...props }: LabelHTMLAttributes<HTMLLabelElement>) {
+  return <label className={`label block text-label ${className}`} {...props} />;
+}
 
-export function FieldLabel({ children, htmlFor }: { children: React.ReactNode; htmlFor?: string }) {
+export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return (
-    <label htmlFor={htmlFor} className="mb-1 block text-xs font-semibold text-[var(--muted)]">
-      {children}
-    </label>
+    <input
+      className={`h-12 w-full rounded-[4px] border-0 bg-field px-3 text-[17px] text-ink shadow-[inset_0_-2px_0_var(--field-rule)] transition-[box-shadow,background-color] duration-150 hover:shadow-[inset_0_-2px_0_var(--muted)] focus:bg-[var(--field-focus)] focus:shadow-[inset_0_-3px_0_var(--ink)] focus:outline-none ${className}`}
+      {...props}
+    />
   );
 }

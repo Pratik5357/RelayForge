@@ -20,16 +20,14 @@ Check the API is up: `http://localhost:5284/health` should return `{"status":"ok
 
 ## 1. Database (PostgreSQL)
 
-Run PostgreSQL in Docker:
+Run PostgreSQL in Docker with the compose file at the repo root:
 
 ```bash
-docker run -d --name relayforge-postgres \
-  -e "POSTGRES_PASSWORD=<choose-a-password>" \
-  -e "POSTGRES_DB=relayforge" \
-  -p 5433:5432 \
-  postgres:16
+cp .env.example .env        # the local password already matches appsettings.Development.json
+docker compose up -d        # starts relayforge-postgres on localhost:5433
 ```
 
+- Data is kept in the `relayforge-pgdata` volume across restarts; `docker compose down -v` wipes it.
 - Port `5433` on your machine maps to `5432` in the container, so it does not clash with a Postgres you may already run.
 - Any reachable PostgreSQL works instead. You only need its connection string.
 
@@ -37,7 +35,7 @@ docker run -d --name relayforge-postgres \
 
 | Setting | Required | Example value | Notes |
 |---|---|---|---|
-| `ConnectionStrings:Default` | **Yes** | `Host=localhost;Port=5433;Database=relayforge;Username=postgres;Password=<your-password>` | Use the same password as the Docker command. Never put the real value in a committed file. |
+| `ConnectionStrings:Default` | Preset for local | `Host=localhost;Port=5433;Database=relayforge;Username=postgres;Password=<from .env.example>` | `appsettings.Development.json` already holds this for the local Docker database. Override it (user secret or env var) for any other database, and never commit a real hosted database password. |
 | `Cors:AllowedOrigins` | **In production** | `https://app.example.com` | Your deployed frontend URL(s). Env var form: `Cors__AllowedOrigins__0=https://app.example.com`. Defaults to `http://localhost:3000`. |
 | `Database:MigrateOnStartup` | No (default `false`) | `true` | Applies pending migrations when the API starts. |
 | `WorkerPool:Concurrency` | No (default `4`) | `4` | How many steps run at the same time. |
@@ -87,9 +85,9 @@ Copy the example: `cp .env.local.example .env.local`.
 - **"Could not reach the API" in the browser:** the backend is not running, or `NEXT_PUBLIC_API_URL` points at the wrong port. Use `http://localhost:5284` unless you started the https profile.
 - **Works on `localhost:3000` but not from your phone or another machine:** the backend only accepts requests from `http://localhost:3000` (CORS, in `backend/src/RelayForge.Api/Program.cs`). Add your origin there to use another address. Next.js also needs that address listed under `allowedDevOrigins` in `frontend/next.config.ts`.
 - **API fails at startup with a database error:** the connection string is empty or wrong, the container is not running (`docker ps`), or the migration has not been applied.
-- **Docker container exits straight away:** `POSTGRES_PASSWORD` was not set.
+- **`docker compose up` fails with "Set POSTGRES_PASSWORD":** create `.env` from `.env.example`.
 - **A run stays "Running" forever after you stopped the API:** the worker queue is in memory. Delete that run, or restart and start a new one.
-- **Port 5433 or 3000 already in use:** change the left side of `-p 5433:5432`, or start Next.js with `npm run dev -- -p 3001` (then the CORS origin above must change too).
+- **Port 5433 or 3000 already in use:** change the left side of `5433:5432` in `docker-compose.yml`, or start Next.js with `npm run dev -- -p 3001` (then the CORS origin above must change too).
 
 ## Deploying (Railway backend, Vercel frontend)
 
@@ -100,5 +98,7 @@ Copy the example: `cp .env.local.example .env.local`.
    - `Database__MigrateOnStartup` = `true`
    - `Cors__AllowedOrigins__0` = your Vercel URL, e.g. `https://relayforge.vercel.app` (no trailing slash)
 3. Keep it to **one replica** (the job queue is in memory). Health check path: `/health`.
+
+**Keeping a free Supabase database awake:** Supabase pauses free projects after a week without queries. The running API queries the database every second, so this only matters if the API is down for days. Keep the API always on (don't enable Railway's app sleeping). `GET /health/db` runs a real query, so it's a quick way to check the API can reach the database.
 
 **Vercel (frontend):** set **Root Directory** to `frontend` and the env var `NEXT_PUBLIC_API_URL` to the Railway public URL (`https://<name>.up.railway.app`), then redeploy. Preview deployments use different URLs, so add each one you use to `Cors__AllowedOrigins__N`.

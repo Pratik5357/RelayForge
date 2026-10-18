@@ -1,260 +1,130 @@
 ---
 name: RelayForge
-description: A graphite route card where each step shows the temper colour steel takes as it heats.
+description: Departures. A run is a departures board; a tour demo is a boarding pass.
 colors:
-  background: "#151a20"
-  rail: "#0f1318"
-  surface: "#1c232b"
-  surface-raised: "#232b34"
-  border: "#303a45"
-  border-strong: "#46525f"
-  foreground-bone: "#e8e4d9"
-  muted-steel: "#9aa5b1"
-  accent-ink: "#14181d"
-  focus-straw: "#e6c25a"
-  pending-fg: "#a9b3be"
-  pending-solid: "#7f8a96"
-  running-bg: "#2b2611"
-  running-fg: "#efcb62"
-  running-ring: "#6b5a1c"
-  running-solid: "#e6c25a"
-  succeeded-bg: "#14264a"
-  succeeded-fg: "#8db0ff"
-  succeeded-ring: "#2c4f93"
-  succeeded-solid: "#5b8def"
-  failed-bg: "#3a1518"
-  failed-fg: "#ff7a82"
-  failed-ring: "#8a2a35"
-  failed-solid: "#e5484d"
-  partiallyfailed-bg: "#33230f"
-  partiallyfailed-fg: "#e0a566"
-  partiallyfailed-ring: "#7a5427"
-  partiallyfailed-solid: "#cf8f4e"
-  cancelled-bg: "#1f262e"
-  cancelled-fg: "#93a0ae"
-  cancelled-ring: "#3d4854"
-  cancelled-solid: "#6c7885"
-  deadlettered-bg: "#2a1c3f"
-  deadlettered-fg: "#c9a2f5"
-  deadlettered-ring: "#5f3f93"
-  deadlettered-solid: "#a97ae0"
+  concourse: "#e4e6e3"
+  paper: "#ffffff"
+  field: "#f4f5f2"
+  field-focus: "#fffbea"
+  hairline: "#c4c8c2"
+  hairline-soft: "#daddd8"
+  ink: "#121412"
+  muted: "#4e534d"
+  label: "#5c615b"
+  amber: "#ffc22e"
+  error: "#b3261e"
+  board: "#121412"
+  board-raised: "#1b1e1b"
+  board-control: "#262a26"
+  board-rule: "#2a2e2a"
+  board-text: "#f2f0e8"
+  board-muted: "#a9aea6"
+  remark-pending: "#a9aea6"
+  remark-running: "#ffc22e"
+  remark-succeeded: "#5bd687"
+  remark-failed: "#ff6e5e"
+  remark-partiallyfailed: "#ffa24a"
+  remark-deadlettered: "#c9a3ff"
+  remark-cancelled: "#a9aea6"
 typography:
   display:
-    fontFamily: "Big Shoulders, Archivo, sans-serif"
-    fontSize: "3rem"
-    fontWeight: 700
-    lineHeight: 1.05
-    letterSpacing: "0.01em"
-  headline:
-    fontFamily: "Big Shoulders, Archivo, sans-serif"
-    fontSize: "2.25rem"
-    fontWeight: 700
-    lineHeight: 1.05
-    letterSpacing: "0.01em"
-  title:
-    fontFamily: "Big Shoulders, Archivo, sans-serif"
-    fontSize: "1.5rem"
-    fontWeight: 700
-    lineHeight: 1.05
-    letterSpacing: "0.01em"
+    fontFamily: "Atkinson Hyperlegible Next, system-ui, sans-serif"
+    fontSize: "clamp(52px, 6.4vw, 92px)"
+    fontWeight: 800
+    lineHeight: 0.95
+    letterSpacing: "-0.04em"
+  page:
+    fontFamily: "Atkinson Hyperlegible Next"
+    fontSize: "72px"
+    fontWeight: 800
+    letterSpacing: "-0.045em"
+  section:
+    fontFamily: "Atkinson Hyperlegible Next"
+    fontSize: "40-44px"
+    fontWeight: 800
+    letterSpacing: "-0.035em"
   body:
-    fontFamily: "Archivo, system-ui, sans-serif"
-    fontSize: "0.9375rem"
+    fontFamily: "Atkinson Hyperlegible Next"
+    fontSize: "16-17px"
     fontWeight: 400
     lineHeight: 1.55
   label:
-    fontFamily: "Archivo, system-ui, sans-serif"
-    fontSize: "0.75rem"
-    fontWeight: 600
-    lineHeight: 1.5
+    fontFamily: "Atkinson Hyperlegible Next"
+    fontSize: "12px"
+    fontWeight: 700
+    letterSpacing: "0.08em"
+    textTransform: "uppercase"
   data:
-    fontFamily: "Geist Mono, ui-monospace, monospace"
-    fontSize: "0.75rem"
-    fontWeight: 400
-    lineHeight: 1.5
+    fontFamily: "Atkinson Hyperlegible Mono, ui-monospace, monospace"
+    fontSize: "12-26px"
 rounded:
-  hairline: "1px"
-  control: "3px"
-  container: "4px"
-spacing:
-  xs: "4px"
-  sm: "8px"
-  md: "16px"
-  lg: "20px"
-  xl: "40px"
-components:
-  button-primary:
-    backgroundColor: "{colors.foreground-bone}"
-    textColor: "{colors.accent-ink}"
-    rounded: "{rounded.control}"
-    padding: "8px 16px"
-  button-primary-hover:
-    backgroundColor: "#ffffff"
-  button-secondary:
-    backgroundColor: "{colors.surface}"
-    textColor: "{colors.foreground-bone}"
-    rounded: "{rounded.control}"
-    padding: "8px 16px"
-  button-secondary-hover:
-    backgroundColor: "{colors.surface-raised}"
-  button-ghost:
-    backgroundColor: "transparent"
-    textColor: "{colors.muted-steel}"
-    rounded: "{rounded.control}"
-    padding: "8px 16px"
-  card:
-    backgroundColor: "{colors.surface}"
-    rounded: "{rounded.container}"
-    padding: "16px"
-  input:
-    backgroundColor: "{colors.background}"
-    textColor: "{colors.foreground-bone}"
-    rounded: "{rounded.control}"
-    padding: "8px 12px"
-  nav-item:
-    textColor: "{colors.muted-steel}"
-    rounded: "{rounded.control}"
-    padding: "8px 12px"
-  nav-item-active:
-    backgroundColor: "{colors.surface-raised}"
-    textColor: "{colors.foreground-bone}"
-  step-node:
-    backgroundColor: "{colors.surface}"
-    rounded: "{rounded.container}"
-    padding: "12px"
-    width: "216px"
-  state-badge:
-    rounded: "{rounded.control}"
-    padding: "2px 8px"
-    typography: "{typography.label}"
+  remark: "4px"
+  input: "4px"
+  button: "6px"
+  board: "12px"
+  pass: "16-18px"
+motion:
+  ease-out: "cubic-bezier(0.23, 1, 0.32, 1)"
+  ease-in-out: "cubic-bezier(0.77, 0, 0.175, 1)"
+  ease-drawer: "cubic-bezier(0.32, 0.72, 0, 1)"
 ---
 
 # Design System: RelayForge
 
 ## Overview
 
-**Creative North Star: "The Temper Route Card"**
+**North star: "Departures."** A running job is read the way a traveller reads a departures board: rows that move, remarks that change, the one you care about lit. Each tour demo is a boarding pass you tear off to run. Light concourse ground, black board panels, white passes, one hyperlegible family. Amber means "working now".
 
-The job is a piece of work travelling a steel-mill route card, and each step's state is the oxide colour steel takes when heated. The shell is dark graphite and stays quiet; all chroma is reserved for state. Bare steel grey (pending) heats to straw gold (running) and settles to temper blue (succeeded). Bronze, cherry and oxide purple carry the failure family.
+Built for two audiences at once (see PRODUCT.md): newcomers watching a demo, and engineers using it as a console. No mode switch.
 
-Density is console-grade: dense tables for engineers, a wide step graph for newcomers, both in one view with no mode switch. Surfaces are flat, bordered, and square-ish (3-4px corners). Colour never works alone: every state also has its own glyph shape and node-border treatment, so the card reads in greyscale.
+## Colour
 
-**Key Characteristics:**
-- Graphite shell, bone ink, chroma only where state is meaningful.
-- Seven states, each with a colour family (bg / fg / ring / solid) and a distinct shape cue.
-- Condensed display voice (Big Shoulders) over a plain grotesque (Archivo), mono for counts and tickets.
-- Flat tonal layering; no shadows.
-- One authored motion: the running heat bar.
-
-## Colors
-
-A graphite-blue neutral ladder carrying a seven-state oxide ramp; the neutral shell has no accent hue of its own.
-
-### Primary
-- **Bone** (#e8e4d9): body ink, and the fill of the primary button (ink on it is #14181d). The only "brand" colour; it is neutral.
-
-### Secondary
-- **Straw Focus** (#e6c25a): focus ring, caret, and text selection. Shares the running-state hue, so focus and "working" read as related heat.
-
-### Tertiary (state ramp)
-Each state defines bg (tint), fg (text), ring (1px edge) and solid (bars, edges, marks).
-- **Bare Steel** (pending, #7f8a96 solid): waiting.
-- **Straw** (running, #e6c25a solid): working.
-- **Temper Blue** (succeeded, #5b8def solid): done; also colours completed dependency edges.
-- **Cherry** (failed, #e5484d solid): failed.
-- **Bronze** (partially failed, #cf8f4e solid): some steps failed.
-- **Oxide Purple** (dead-lettered "parked", #a97ae0 solid): out of retries, parked.
-- **Cool Slate** (cancelled, #6c7885 solid): stopped by the user.
-
-### Neutral
-- **Graphite** (#151a20): page background. **Rail** (#0f1318): the darker nav rail.
-- **Plate** (#1c232b): cards, tables, nodes. **Raised Plate** (#232b34): table heads, active nav, hover.
-- **Seam** (#303a45) and **Strong Seam** (#46525f): borders; strong for inputs, pending nodes, idle edges.
-- **Muted Steel** (#9aa5b1): secondary text and labels.
-
-### Named Rules
-**The Heat-Is-State Rule.** Chroma outside the neutral ladder means a step or run state, and nothing else. Do not use state colours as decoration.
-**The Never-Colour-Alone Rule.** Every state pairs its colour with its glyph and, on nodes, its border style (dashed pending, 2px failed, 4px double parked, struck-through cancelled name).
+- **Concourse** (`#e4e6e3`) is the page ground; **paper** (`#fff`) for passes, forms and lists; **board** (`#121412`) for live data panels and the top bar.
+- **Ink** (`#121412`) for text and primary buttons; **muted** for secondary text (≥4.5:1 on concourse and paper).
+- **Amber** (`#ffc22e`) is reserved for: the running state, the active-nav underline, the one "go" action per screen, retry countdowns, and the focus halo.
+- **Remarks** carry state on the board: pending/cancelled grey, running amber, succeeded green, failed red, partly failed orange, parked violet. Colour is never alone: the remark always spells the state ("Parked", "Partly failed"), the lamp is hollow for pending/cancelled and solid otherwise, cancelled is struck through, and only running blinks.
 
 ## Typography
 
-**Display Font:** Big Shoulders (with Archivo, sans-serif)
-**Body Font:** Archivo (with system-ui, sans-serif)
-**Label/Mono Font:** Geist Mono (counts, tickets, attempt tallies)
-
-**Character:** A tall stamped-plate display voice over a neutral working grotesque; mono makes numbers scan like route-card tickets.
-
-### Hierarchy
-- **Display** (700, 3rem, 1.05): the Overview hero h1 only.
-- **Headline** (700, 2.25rem, 1.05): page h1 on Runs, New run, Run detail, Glossary.
-- **Title** (700, 1.5rem, 1.05): section h2s.
-- **Body** (400, 0.9375rem, 1.55): all running text; `text-wrap: pretty` on paragraphs.
-- **Label** (600, 0.75rem to 0.875rem): table heads, field labels, graph stage headers, badges. Sentence case, no tracking.
-- **Data** (mono, 0.6875rem to 0.75rem, tabular numerals): ticket numbers, "n/m tries".
-
-### Named Rules
-**The Tabular Rule.** Tables and counts use tabular numerals (`.tnum`, table default).
-
-## Layout
-
-Two columns from the md breakpoint: a fixed 14rem left rail (sticky, full height) and a fluid main capped at max-w-6xl with 40px side and top padding (20px / 32px below md). Below md the rail collapses to a top bar with a horizontally scrolling nav. Overview stacks the step graph above the scenario list because three 216px stages need full width. The step graph sits on a column grid: 216px nodes, 72px column gaps, 14px row gaps, a 34px stage-header row, each stage on a Graphite band. On narrow screens the graph scrolls sideways with a hint. Spacing follows Tailwind's 4px step with 12/16px inside components, 8-10px between table cells vertically (py-2.5).
-
-## Elevation & Depth
-
-Flat. Depth is tonal: Graphite page, Plate surfaces, Raised Plate for heads and hover, always edged with a 1px Seam border. Badges use an inset 1px ring (the only box-shadow, and it is a border substitute, not elevation). No drop shadows.
-
-### Named Rules
-**The Flat-Plate Rule.** Hierarchy comes from tone and border, never from shadow.
-
-## Shapes
-
-Machined and square: 3px on controls (buttons, inputs, badges, nav items), 4px on containers (cards, tables, callouts, nodes), 1px on heat bars and the brand strip. Focus ring is a 2px straw outline with 2px offset. Node borders encode state (dashed, solid, 2px, 4px double).
+One family: **Atkinson Hyperlegible Next** for everything, **Atkinson Hyperlegible Mono** only for times, counts, tries, ids and codes. Headings are 800 weight with tight negative tracking. Small uppercase tracked labels (`.label`) are the only caps, used for field and column labels.
 
 ## Components
 
-### Buttons
-- **Shape:** 3px radius; semibold; 150ms colour transition; disabled at 50% opacity.
-- **Primary:** Bone fill, ink text, 8px 16px (md) or 6px 12px (sm); hover goes white; 1px press nudge.
-- **Secondary:** Plate fill, 1px Strong Seam border, hover Raised Plate and Muted border.
-- **Ghost:** Muted text, hover Plate fill and bone text.
+- **Top bar** — board-black, wordmark + three-slat mark with the amber lamp, nav with an amber underline that slides between tabs (`layoutId`), live local clock. Anchored during page transitions (`view-transition-name: site-header`). On phones the nav is one scrolling row under the logo.
+- **Remark** (`components/Remark.tsx`) — a small black tag with a lamp and the state in words; flips in like a board flap when the state changes.
+- **Board** — black panel, 12px corners, uppercase column labels, mono figures. Rows re-rank with a layout spring (working rows rise, finished rows settle) rather than jumping.
+- **Boarding pass** (`components/BoardingPass.tsx`) — white pass with a dashed tear line and two notches (`components/Perforation.tsx`); the stub holds the tour number, scenario code and "Run it". The tear line turns horizontal when the stub wraps under the pass (container query).
+- **Timeline** (`components/RunTimeline.tsx`) — one lane per step on the run's own clock: solid bars for tries that worked, hatched for tries that failed, dotted lines for the wait before a retry. Built from tries the page observed (`lib/attempts.ts`); tries that finished before the page opened are drawn as one labelled span ("tries 1–3").
+- **Buttons** — primary (ink), secondary (1.5px ink outline), go (amber, one per screen), board (on black). 6px corners, `scale(0.97)` on press.
+- **Inputs** — field-grey with a bottom rule; focus turns the field pale amber with a 3px ink rule.
+- **Overlays** (`components/Overlay.tsx`) — native `<dialog>` with `showModal()` (focus trap, Escape, inert page). Centred dialog for confirmations (cancel a run); right-edge sheet for step details.
+- **Toasts** (`components/Toaster.tsx`) — bottom-right stack, newest in front, older ones step back; pause on hover and while the tab is hidden.
 
-### Cards / Containers
-- 4px radius, Plate, 1px Seam border, 16px padding, no shadow.
+## Motion
 
-### Inputs / Fields
-- Graphite fill (inset against Plate), 1px Strong Seam border, 3px radius, 8px 12px padding. Hover brightens border to Muted; focus swaps to Straw border plus the straw outline. Labels are 12px semibold Muted above the field.
+Library: **Motion** (`motion/react`) for layout, presence and gesture-style motion; CSS for predetermined loops; React `<ViewTransition>` for route changes. Tokens live in `lib/motion.ts` and as CSS variables.
 
-### Navigation
-- Left rail on Rail colour, 1px Seam divider. Items 14px medium, Muted; active is Raised Plate with bone text and `aria-current`. Brand is the wordmark over a five-segment temper strip (grey, straw, bronze, purple, blue). A one-line colour legend sits at the rail foot.
+| Moment | Purpose | Curve / time |
+|---|---|---|
+| Page transition | Old page leaves fast with a 2px blur, new one arrives from the side you're heading | out 150ms, in 260ms ease-out; nav-forward / nav-back types |
+| Nav underline | Shows where you are by moving, not recolouring | 300ms ease-in-out |
+| Page entrance | Content rises in a short stagger; board panels drop in with a clip reveal | 420ms ease-out, ≤200ms stagger; 560ms clip |
+| Overview headline | The one authored entrance | 720ms clip reveal |
+| Board rerank | Rows slide to their new rank | spring, 0.45s, no bounce |
+| Remark flip | New state turns in like a flap | 240ms ease-out |
+| Running lamp | Only working steps blink | 1.1s steps(1) loop (CSS) |
+| Cancel dialog | Protects an irreversible action | in 250ms scale .96→1, out 150ms |
+| Step sheet | Comes from its edge, leaves the same way | in 500ms / out 300ms drawer curve |
+| Toasts | Rise from the corner and stack | 400ms `ease` |
+| Timeline tooltip | Names a try without a click, grows from its bar | 125ms, 250ms hover delay |
+| Start run / Run it | Label morphs to show progress | 200ms ease-out + 2px blur |
 
-### Tables
-- Plate body, Raised Plate head, Seam row dividers, 16px by 10px cells, 12px semibold Muted heads, horizontal scroll wrapper.
+Rules: exits are faster than entrances; nothing scales from 0; hover motion only on `(hover: hover) and (pointer: fine)`; no animation on keyboard-driven or high-frequency actions (nav clicks themselves, typing). `prefers-reduced-motion` keeps opacity and colour changes and drops movement: rows jump to place, remarks crossfade, page transitions fade, the lamp stops blinking.
 
-### State Badge (signature)
-- 3px radius, state bg tint, state fg text, inset 1px ring, 12px glyph plus label ("Partly failed", "Parked" for the two renamed states). Glyphs: dashed circle (pending), half-filled pulsing circle (running), filled check disc (succeeded), crossed diamond (failed), left-half disc (partly failed), ringed dot (parked), slashed circle (cancelled).
+## Do's and don'ts
 
-### Step Node and Heat Bar (signature)
-- A 216px Plate node with state-ring border, a 6px heat bar on top (empty outline pending; straw sweep 1.6s running; solid state colour when settled), name plus mono ticket (stage.row), badge plus mono tries. Retry countdown is straw text; error text is cherry, clamped to two lines. Edges are bezier curves: Temper Blue when the upstream step succeeded, otherwise Strong Seam, dashed while the downstream step waits.
-
-### Callout
-- 4px radius, 1px border, 16px padding; tones info (Plate), teach (running tint), error (failed tint).
-
-## Do's and Don'ts
-
-### Do:
-- **Do** express any new state with bg / fg / ring / solid tokens plus a glyph and a border or text cue.
-- **Do** keep surfaces flat: Graphite, Plate, Raised Plate, 1px Seam.
-- **Do** use Big Shoulders for h1 and h2 only; Archivo for everything else; mono for numbers.
-- **Do** honour `prefers-reduced-motion` for any looping animation (heat-sweep, heat-pulse are disabled).
-- **Do** keep the straw focus ring (2px, 2px offset) visible on every interactive element.
-
-### Don't:
-- **Don't** use the state colours for decoration or branding outside the temper strip.
-- **Don't** convey state by colour alone.
-- **Don't** add drop shadows or radii above 4px.
-- **Don't** introduce a light theme or a second accent colour.
-- **Don't** animate anything other than a running step.
-
-## Known drift (not canonized)
-
-The build carries these; they are not rules for new surfaces. `globals.css` declares `--font-display: var(--font-display)` in `@theme inline`, a self-reference that leaves the Tailwind `font-display` utility unresolved (headings still work through the direct h1/h2 rule). The glossary rail legend and Pending text colours are not independently verified for contrast. Two small text sizes (11px and 13px) are one-offs and are not part of the ramp.
+- **Do** spell every state in words on its remark; colour is a second signal.
+- **Do** keep amber for "working", focus and the single go action.
+- **Do** use mono only for numbers, times and ids.
+- **Don't** add a second accent colour or use state colours as decoration.
+- **Don't** add animations that block interaction or replay on every visit beyond the Overview headline.

@@ -1,0 +1,26 @@
+# Local PostgreSQL for development. Only the database runs in Docker; the API and frontend
+# run on your machine as before. Start it with: docker compose up -d
+#
+# The password comes from POSTGRES_PASSWORD in a .env file next to this one (gitignored);
+# copy .env.example to .env and set it. Port 5433 avoids clashing with a local Postgres.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: relayforge-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: relayforge
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (copy .env.example)}
+    ports:
+      - "5433:5432"
+    volumes:
+      - relayforge-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d relayforge"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  relayforge-pgdata:

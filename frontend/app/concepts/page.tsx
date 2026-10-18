@@ -1,4 +1,6 @@
-type Term = { name: string; definition: string; seeIn: string };
+import { PageTransition } from "@/components/PageTransition";
+import { GlossaryList, type Term } from "./GlossaryList";
+
 
 const TERMS: Term[] = [
   {
@@ -9,7 +11,7 @@ const TERMS: Term[] = [
   {
     name: "Step (task)",
     definition: "One unit of work inside a job. A job can have one step or many.",
-    seeIn: "Each box in the step graph on a run's page.",
+    seeIn: "Each row on a run's steps board.",
   },
   {
     name: "DAG (dependency graph)",
@@ -61,27 +63,8 @@ const TERMS: Term[] = [
 
 export default function ConceptsPage() {
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-4xl leading-none">Glossary</h1>
-        <p className="max-w-2xl text-[var(--muted)]">
-          The ideas behind RelayForge in plain language, and where to see each one happen.
-        </p>
-      </div>
-      <dl className="divide-y divide-[var(--border)] rounded-[4px] border border-[var(--border)] bg-[var(--surface)]">
-        {TERMS.map((term) => (
-          <div key={term.name} className="grid gap-x-8 gap-y-1 px-5 py-4 md:grid-cols-[14rem_1fr]">
-            <dt className="font-semibold">{term.name}</dt>
-            <dd className="space-y-1.5">
-              <p className="max-w-prose text-[var(--muted)]">{term.definition}</p>
-              <p className="max-w-prose text-sm">
-                <span className="font-semibold">See it:</span>{" "}
-                <span className="text-[var(--muted)]">{term.seeIn}</span>
-              </p>
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </div>
+    <PageTransition className="page-enter flex flex-col gap-9">
+      <GlossaryList terms={TERMS} />
+    </PageTransition>
   );
 }

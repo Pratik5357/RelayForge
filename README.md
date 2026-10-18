@@ -22,14 +22,11 @@ This is a from-scratch rebuild. Phase 1 covers:
 
 - .NET 8 SDK
 - Node.js 18+ and npm
-- A PostgreSQL database reachable via connection string. If you don't already have one, run it in a **dedicated Docker container just for the database** (nothing else is containerized):
+- A PostgreSQL database reachable via connection string. If you don't already have one, run the **database-only Docker Compose service** at the repo root (nothing else is containerized):
 
   ```bash
-  docker run -d --name relayforge-postgres \
-    -e "POSTGRES_PASSWORD=<choose-a-password>" \
-    -e "POSTGRES_DB=relayforge" \
-    -p 5433:5432 \
-    postgres:16
+  cp .env.example .env
+  docker compose up -d
   ```
 
   (Port `5433`, not the default `5432`, so it doesn't collide with a local Postgres.) Any other reachable PostgreSQL instance also works; you just need its connection string.
@@ -40,10 +37,10 @@ This is a from-scratch rebuild. Phase 1 covers:
 cd backend
 ```
 
-1. Set your real connection string as a local user secret (never committed — `appsettings.Development.json` only holds a placeholder):
+1. Nothing to configure for the local Docker database: `appsettings.Development.json` already points at it (`localhost:5433`, password from `.env.example`). To use a different database instead, override it with a user secret:
 
    ```bash
-   dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5433;Database=relayforge;Username=postgres;Password=<your-password>" --project src/RelayForge.Api
+   dotnet user-secrets set "ConnectionStrings:Default" "Host=...;Port=...;Database=...;Username=...;Password=..." --project src/RelayForge.Api
    ```
 
 2. Apply the initial migration (creates `Jobs`, `JobTasks`, `TaskDependencies` tables):

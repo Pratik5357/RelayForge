@@ -12,7 +12,9 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        var connectionString = configuration.GetConnectionString("Default");
+        // ConnectionStrings:Default may be a key=value string or a postgres:// URL (as Supabase
+        // copies it); both go through FromDatabaseUrl, which passes key=value strings unchanged.
+        var connectionString = FromDatabaseUrl(configuration.GetConnectionString("Default"));
         if (string.IsNullOrWhiteSpace(connectionString))
         {
             // Railway (and Heroku-style hosts) expose DATABASE_URL as postgres://user:pass@host:port/db.

@@ -42,6 +42,20 @@ app.UseCors(FrontendCorsPolicy);
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
+// Runs a real query, unlike /health, so it confirms the API can actually reach the database.
+app.MapGet("/health/db", async (RelayForgeDbContext db, CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var hasJobs = await db.Jobs.AnyAsync(cancellationToken);
+        return Results.Ok(new { status = "ok", database = "reachable", hasJobs });
+    }
+    catch (Exception ex) when (ex is not OperationCanceledException)
+    {
+        return Results.Problem(detail: "Database query failed.", statusCode: StatusCodes.Status503ServiceUnavailable, title: "Database unavailable");
+    }
+});
+
 app.MapGroup("/api/jobs").MapJobEndpoints();
 app.MapHub<JobEventsHub>("/hubs/jobs");
 
