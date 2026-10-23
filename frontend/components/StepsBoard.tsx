@@ -1,4 +1,4 @@
-import type { JobTaskDto } from "@/lib/types";
+import { isWaiting, type JobTaskDto } from "@/lib/types";
 import { toDagLevels } from "@/lib/dag";
 import { Remark } from "./Remark";
 import { RevealItem, RevealList } from "./Reveal";
@@ -12,7 +12,8 @@ export function retryCountdown(nextAttemptAt: string | null, now: number): strin
 }
 
 const NOTE: Partial<Record<JobTaskDto["state"], string>> = {
-  Pending: "Waiting its turn",
+  Pending: "Waiting on an earlier step",
+  Ready: "Up next",
   Running: "Working now",
   Succeeded: "Finished",
   Cancelled: "Called off",
@@ -41,7 +42,7 @@ export function StepsBoard({ tasks, now, onOpen }: { tasks: JobTaskDto[]; now: n
         <RevealList as="ol" aria-label="Steps">
           {levels.flatMap(({ level, tasks: levelTasks }) =>
             levelTasks.map((task) => {
-              const countdown = task.state === "Pending" ? retryCountdown(task.nextAttemptAt, now) : null;
+              const countdown = isWaiting(task.state) ? retryCountdown(task.nextAttemptAt, now) : null;
               const note = countdown ?? (task.errorMessage && task.state !== "Succeeded" ? task.errorMessage : NOTE[task.state]);
               const noteColor = countdown
                 ? "var(--amber)"

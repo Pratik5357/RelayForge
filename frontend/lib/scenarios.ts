@@ -146,16 +146,16 @@ export const SCENARIOS: Scenario[] = [
     id: "cancel",
     title: "6. Cancel a run that is still going",
     summary:
-      "Three steps, each taking a few seconds. Submit it, then press Cancel while one is still running — watch what happens to the step in flight versus the ones that haven't started.",
+      "Three steps, each taking a few seconds. Submit it, then press Cancel while one is still running — watch the step in flight get told to stop, and the ones that haven't started get called off.",
     concept: "Cooperative cancellation",
     watchFor: [
       "Press Cancel while slow-step-1 shows Running.",
       "slow-step-2 and slow-step-3 (not yet started) immediately show Cancelled.",
-      "slow-step-1 is left alone and finishes naturally.",
-      "Once it settles, the job itself ends Cancelled.",
+      "slow-step-1 stops within a moment instead of running to the end: its worker is notified straight away.",
+      "The job itself ends Cancelled.",
     ],
-    expected: "Cancelled — in-flight step finishes, the rest are called off.",
-    runtime: "~15s (cancel partway through)",
+    expected: "Cancelled — the in-flight step is stopped, the rest are called off.",
+    runtime: "~5s (cancel partway through)",
     job: {
       name: "6. Cancel a run that is still going",
       scenarioKey: "cancel",
@@ -163,6 +163,95 @@ export const SCENARIOS: Scenario[] = [
         { key: "slow1", name: "slow-step-1", simulatedDurationMs: 6000, dependsOn: [] },
         { key: "slow2", name: "slow-step-2", simulatedDurationMs: 6000, dependsOn: ["slow1"] },
         { key: "slow3", name: "slow-step-3", simulatedDurationMs: 6000, dependsOn: ["slow2"] },
+      ],
+    },
+  },
+  {
+    id: "worker-crash",
+    title: "7. A worker crashes mid-step",
+    summary:
+      "The worker running this step goes silent halfway through, as if its machine died: no heartbeat, nothing written. Watch the lease run out, the step get reclaimed, and a different worker finish it — exactly once.",
+    concept: "Leases, heartbeats and reclaim",
+    watchFor: [
+      "charge-card goes Running on one worker, then that worker stops heartbeating.",
+      "About 15 seconds later its lease expires and the step is reclaimed.",
+      "Try 2 runs on a different worker and succeeds.",
+      "Guarantees: 2 tries, 1 success, 1 lease reclaimed, 0 duplicate completions.",
+    ],
+    expected: "Succeeded — reclaimed after the crash, completed once.",
+    runtime: "~20s",
+    job: {
+      name: "7. A worker crashes mid-step",
+      scenarioKey: "worker-crash",
+      tasks: [
+        { key: "charge", name: "charge-card", type: "simulated", payload: { durationMs: 2000, crashOnAttempt: 1 }, dependsOn: [] },
+        { key: "receipt", name: "send-receipt", type: "simulated", payload: { durationMs: 1000 }, dependsOn: ["charge"] },
+      ],
+    },
+  },
+  {
+    id: "zombie",
+    title: "8. A frozen worker wakes up too late",
+    summary:
+      "This step's worker freezes (think: a long garbage-collection pause) for longer than its lease. The step is reclaimed and finished by another worker. Then the frozen one wakes up and reports success anyway. Watch RelayForge reject it.",
+    concept: "Fencing tokens",
+    watchFor: [
+      "Try 1 freezes; its lease expires and the step is reclaimed.",
+      "Try 2 succeeds on another worker, and the run finishes.",
+      "About 25 seconds in, the frozen worker reports. The event log shows its stale result rejected.",
+      "Guarantees: 1 success, 1 stale result rejected, 0 duplicate completions.",
+    ],
+    expected: "Succeeded — the late result from the frozen worker is rejected.",
+    runtime: "~30s",
+    job: {
+      name: "8. A frozen worker wakes up too late",
+      scenarioKey: "zombie",
+      tasks: [
+        { key: "report", name: "generate-report", type: "simulated", payload: { durationMs: 1000, pauseOnAttempt: 1, pauseMs: 25000 }, dependsOn: [] },
+      ],
+    },
+  },
+  {
+    id: "http",
+    title: "9. Real HTTP calls: retry what can work, stop what can't",
+    summary:
+      "Two real web requests. One fetches a GitHub repository and passes the answer on to the next step. The other asks for a page that doesn't exist: a 404 can never succeed, so it fails at once instead of retrying.",
+    concept: "Retryable vs fatal errors",
+    watchFor: [
+      "fetch-repo succeeds; open it to see the response stored as its output.",
+      "missing-page fails on its first try with HTTP 404 and is not retried.",
+      "announce runs after fetch-repo, with fetch-repo's output as its input.",
+    ],
+    expected: "PartiallyFailed — one request succeeded, the 404 failed without retries.",
+    runtime: "~5s",
+    job: {
+      name: "9. Real HTTP calls",
+      scenarioKey: "http",
+      tasks: [
+        { key: "fetch-repo", name: "fetch-repo", type: "http.request", payload: { url: "https://api.github.com/repos/dotnet/runtime", headers: { "User-Agent": "RelayForge" } }, dependsOn: [] },
+        { key: "missing-page", name: "missing-page", type: "http.request", payload: { url: "https://api.github.com/repos/this-org-does-not-exist-404/nope", headers: { "User-Agent": "RelayForge" } }, dependsOn: [], maxAttempts: 4 },
+        { key: "announce", name: "announce", type: "simulated", payload: { durationMs: 800 }, dependsOn: ["fetch-repo"] },
+      ],
+    },
+  },
+  {
+    id: "runaway",
+    title: "10. A runaway step is force-stopped",
+    summary:
+      "This step ignores every request to stop. Running inside the worker, nothing could stop it. So it runs in its own process, and when its 3-second time limit is up, the process is killed.",
+    concept: "Process isolation and timeouts",
+    watchFor: [
+      "Open runaway-step: its log shows the runner process start and keep working.",
+      "After 3 seconds the log shows the runner being killed; the try counts as timed out.",
+      "The second try is killed the same way, and the step is parked.",
+    ],
+    expected: "Failed — both tries killed at their time limit.",
+    runtime: "~8s",
+    job: {
+      name: "10. A runaway step is force-stopped",
+      scenarioKey: "runaway",
+      tasks: [
+        { key: "runaway", name: "runaway-step", type: "simulated", payload: { durationMs: 600000, ignoreCancellation: true }, isolation: "Process", timeoutMs: 3000, maxAttempts: 2, dependsOn: [] },
       ],
     },
   },

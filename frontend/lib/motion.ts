@@ -11,7 +11,8 @@ export function routeIndex(pathname: string): number {
   if (pathname === "/") return 0;
   if (pathname === "/jobs/new") return 2;
   if (pathname.startsWith("/jobs")) return 1;
-  if (pathname.startsWith("/concepts")) return 3;
+  if (pathname.startsWith("/schedules")) return 3;
+  if (pathname.startsWith("/concepts")) return 4;
   return 0;
 }
 

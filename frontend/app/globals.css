@@ -33,6 +33,7 @@
   --board-soft: #c9cdc5;
 
   --remark-pending: #a9aea6;
+  --remark-ready: #c9cdc5;
   --remark-running: #ffc22e;
   --remark-succeeded: #5bd687;
   --remark-failed: #ff6e5e;

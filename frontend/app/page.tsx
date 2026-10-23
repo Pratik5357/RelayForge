@@ -9,7 +9,8 @@ import { Arrow, buttonClasses } from "@/components/ui/Button";
 import type { JobState, TaskState } from "@/lib/types";
 
 const LEGEND: { state: TaskState | JobState; means: string }[] = [
-  { state: "Pending", means: "waiting its turn" },
+  { state: "Pending", means: "waiting on an earlier step" },
+  { state: "Ready", means: "queued for the next free worker" },
   { state: "Running", means: "working now" },
   { state: "Succeeded", means: "finished" },
   { state: "DeadLettered", means: "gave up, set aside" },

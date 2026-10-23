@@ -1,13 +1,29 @@
-# Local PostgreSQL for development. Only the database runs in Docker; the API and frontend
-# run on your machine as before. Start it with: docker compose up -d
+# Local development: `docker compose up -d` starts only PostgreSQL; the API and frontend run on
+# your machine as before (dotnet run / npm run dev).
+#
+# The full scale-out stack: `docker compose --profile stack up -d --build --scale worker=3`
+#   api         http://localhost:8080   HTTP + SignalR + outbox dispatcher (runs no workers)
+#   worker      RelayForge.Worker x N   claim and run tasks; sweep + scheduler are leader-elected
+#   jaeger      http://localhost:16686  traces: POST /api/jobs -> task.execute, across processes
+#   prometheus  http://localhost:9090   metrics, pushed over OTLP
+#   grafana     http://localhost:3001   the RelayForge dashboard (anonymous viewer access)
+# Point the frontend at it with NEXT_PUBLIC_API_URL=http://localhost:8080.
 #
 # The password comes from POSTGRES_PASSWORD in a .env file next to this one (gitignored);
 # copy .env.example to .env and set it. Port 5433 avoids clashing with a local Postgres.
+# Settings every RelayForge process in the stack shares.
+x-relayforge-env: &relayforge-env
+  ConnectionStrings__Default: Host=postgres;Port=5432;Database=relayforge;Username=postgres;Password=${POSTGRES_PASSWORD}
+  Otel__TracesEndpoint: http://jaeger:4317
+  Otel__MetricsEndpoint: http://prometheus:9090/api/v1/otlp/v1/metrics
+
 services:
   postgres:
     image: postgres:16-alpine
     container_name: relayforge-postgres
     restart: unless-stopped
+    # pg_stat_statements: which queries cost the most under load (see docs/LOADTEST.md).
+    command: ["postgres", "-c", "shared_preload_libraries=pg_stat_statements", "-c", "max_connections=300"]
     environment:
       POSTGRES_DB: relayforge
       POSTGRES_USER: postgres
@@ -21,6 +37,60 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  api:
+    profiles: ["stack"]
+    build: { context: ./backend, target: api }
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      <<: *relayforge-env
+      # Only the API migrates; workers start once it's healthy.
+      Database__MigrateOnStartup: "true"
+      WorkerPool__RunInApi: "false"
+      Cors__AllowedOrigins__0: http://localhost:3000
+    ports:
+      - "8080:8080"
+    healthcheck:
+      # The aspnet image has no curl; bash's /dev/tcp is enough for one GET.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health/db HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  worker:
+    profiles: ["stack"]
+    build: { context: ./backend, target: worker }
+    depends_on:
+      api: { condition: service_healthy }
+    environment:
+      <<: *relayforge-env
+      WorkerPool__Concurrency: "4"
+
+  jaeger:
+    profiles: ["stack"]
+    image: jaegertracing/all-in-one:1.62.0
+    ports:
+      - "16686:16686"
+
+  prometheus:
+    profiles: ["stack"]
+    build: ./deploy/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.enable-otlp-receiver
+    ports:
+      - "9090:9090"
+
+  grafana:
+    profiles: ["stack"]
+    build: ./deploy/grafana
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/relayforge.json
+    ports:
+      - "3001:3000"
 
 volumes:
   relayforge-pgdata:

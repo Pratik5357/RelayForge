@@ -38,12 +38,23 @@ docker compose up -d        # starts relayforge-postgres on localhost:5433
 | `ConnectionStrings:Default` | Preset for local | `Host=localhost;Port=5433;Database=relayforge;Username=postgres;Password=<from .env.example>` | `appsettings.Development.json` already holds this for the local Docker database. Override it (user secret or env var) for any other database, and never commit a real hosted database password. |
 | `Cors:AllowedOrigins` | **In production** | `https://app.example.com` | Your deployed frontend URL(s). Env var form: `Cors__AllowedOrigins__0=https://app.example.com`. Defaults to `http://localhost:3000`. |
 | `Database:MigrateOnStartup` | No (default `false`) | `true` | Applies pending migrations when the API starts. |
-| `WorkerPool:Concurrency` | No (default `4`) | `4` | How many steps run at the same time. |
+| `WorkerPool:RunInApi` | No (default `true`) | `false` | Whether the API process also runs workers, the lease sweep and the scheduler. Set `false` when separate `RelayForge.Worker` processes do that (the Compose stack). |
+| `WorkerPool:Concurrency` | No (default `4`) | `4` | How many steps one process runs at the same time. |
+| `WorkerPool:PollIntervalMs` | No (default `500`) | `500` | How often an idle worker checks the database for due work, such as a retry whose wait has passed. New steps wake workers immediately. |
+| `WorkerPool:ShutdownGraceMs` | No (default `5000`) | `5000` | On shutdown, how long running steps may finish before they're handed back (without using up a try). |
 | `Reliability:BaseBackoffMs` | No (default `500`) | `500` | First retry delay. It doubles each retry. |
 | `Reliability:MaxBackoffMs` | No (default `8000`) | `8000` | Longest retry delay. |
 | `Reliability:DefaultMaxAttempts` | No (default `4`) | `4` | Tries per step when a step does not set its own. |
-| `Reliability:LeaseBufferMs` | No (default `15000`) | `15000` | How long a worker may hold a step before it is treated as crashed. |
+| `Reliability:LeaseDurationMs` | No (default `15000`) | `15000` | How long a worker can go without a heartbeat before its step is treated as crashed and reclaimed. Heartbeats run every third of this. |
 | `Reliability:SweepIntervalMs` | No (default `1000`) | `1000` | How often the system looks for crashed steps. |
+| `Reliability:DefaultTimeoutMs` | No (default `300000`) | `300000` | Time limit for one try of a step that doesn't set its own `timeoutMs`. |
+| `Fairness:AgingSeconds` | No (default `60`) | `60` | A waiting step's priority goes up by 1 for every this many seconds it waits, so nothing starves. |
+| `Fairness:MaxRunningPerTenant` | No (default `0` = off) | `5` | Soft cap on running steps per `tenantId`. |
+| `Harness:RunnerPath` | No | `/app/RelayForge.Runner.dll` | Runner for `"isolation": "Process"`. Defaults to the one shipped next to the API/worker. |
+| `Harness:ContainerImage` | No (default `relayforge-runner`) | `relayforge-runner` | Image for `"isolation": "Container"` (build it with `docker build --target runner -t relayforge-runner backend`). Needs the `docker` CLI on the worker's machine. |
+| `Retention:Days` / `Retention:Cron` | No (defaults `7`, `0 3 * * *`) | `7` | The built-in retention schedule, created the first time a scheduler starts. Change it later on the Schedules page. |
+| `Otel:TracesEndpoint` | No | `http://localhost:4317` | OTLP/gRPC endpoint for traces (Jaeger). Off when unset. |
+| `Otel:MetricsEndpoint` | No | `http://localhost:9090/api/v1/otlp/v1/metrics` | OTLP/HTTP endpoint for metrics (Prometheus with `--web.enable-otlp-receiver`). Off when unset. |
 | `ASPNETCORE_ENVIRONMENT` | No | `Development` | Set automatically by `dotnet run` through `launchSettings.json`. |
 
 **How to set the connection string (pick one):**
@@ -86,7 +97,8 @@ Copy the example: `cp .env.local.example .env.local`.
 - **Works on `localhost:3000` but not from your phone or another machine:** the backend only accepts requests from `http://localhost:3000` (CORS, in `backend/src/RelayForge.Api/Program.cs`). Add your origin there to use another address. Next.js also needs that address listed under `allowedDevOrigins` in `frontend/next.config.ts`.
 - **API fails at startup with a database error:** the connection string is empty or wrong, the container is not running (`docker ps`), or the migration has not been applied.
 - **`docker compose up` fails with "Set POSTGRES_PASSWORD":** create `.env` from `.env.example`.
-- **A run stays "Running" forever after you stopped the API:** the worker queue is in memory. Delete that run, or restart and start a new one.
+- **A run seems stuck after you restarted the API:** a step that was mid-try is reclaimed once its lease expires (`Reliability:LeaseDurationMs`, 15 s by default), then retried. Steps that hadn't started yet resume right away. A normal stop (Ctrl+C) hands running steps back immediately.
+- **`docker compose --profile stack up` fails with "mkdir /host_mnt/...: operation not permitted":** that is macOS refusing Docker Desktop access to the folder. The stack itself uses no bind mounts, so this only comes from an older checkout. Pull and rebuild.
 - **Port 5433 or 3000 already in use:** change the left side of `5433:5432` in `docker-compose.yml`, or start Next.js with `npm run dev -- -p 3001` (then the CORS origin above must change too).
 
 ## Deploying (Railway backend, Vercel frontend)
@@ -97,7 +109,7 @@ Copy the example: `cp .env.local.example .env.local`.
    - `DATABASE_URL` = `${{Postgres.DATABASE_URL}}` (the API converts the `postgres://` URL itself; or set `ConnectionStrings__Default` instead)
    - `Database__MigrateOnStartup` = `true`
    - `Cors__AllowedOrigins__0` = your Vercel URL, e.g. `https://relayforge.vercel.app` (no trailing slash)
-3. Keep it to **one replica** (the job queue is in memory). Health check path: `/health`.
+3. Keep the API to **one replica**: the job queue is in Postgres, but live updates (SignalR) have no backplane yet, so a browser connected to one replica would miss events from another. Separate worker processes need the Dockerfile's `worker` stage, while Railway builds its last stage (the API), so on Railway the API keeps running the workers itself (`WorkerPool__RunInApi` stays `true`). Health check path: `/health`.
 
 **Keeping a free Supabase database awake:** Supabase pauses free projects after a week without queries. The running API queries the database every second, so this only matters if the API is down for days. Keep the API always on (don't enable Railway's app sleeping). `GET /health/db` runs a real query, so it's a quick way to check the API can reach the database.
 

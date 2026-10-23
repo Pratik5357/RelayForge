@@ -2,13 +2,21 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using RelayForge.Handlers;
 using RelayForge.Infrastructure.Execution;
+using RelayForge.Infrastructure.Harness;
+using RelayForge.Infrastructure.Jobs;
+using RelayForge.Infrastructure.Scheduling;
 
 namespace RelayForge.Infrastructure;
 
 public static class ServiceCollectionExtensions
 {
-    public static IServiceCollection AddRelayForgeInfrastructure(
+    /// <summary>
+    /// What every RelayForge host needs: the database, job submission and operator actions,
+    /// task handler metadata (for validation), and the NOTIFY listener.
+    /// </summary>
+    public static IServiceCollection AddRelayForgeCore(
         this IServiceCollection services,
         IConfiguration configuration)
     {
@@ -25,23 +33,64 @@ public static class ServiceCollectionExtensions
                 "Missing ConnectionStrings:Default. Set it via `dotnet user-secrets set \"ConnectionStrings:Default\" \"...\"` in RelayForge.Api, or provide DATABASE_URL.")
             : connectionString;
 
+        services.AddSingleton(new RelayForgeConnectionString(connectionString));
         services.AddDbContext<RelayForgeDbContext>(options =>
             options.UseNpgsql(connectionString, npgsql => npgsql.EnableRetryOnFailure()));
 
         services.Configure<ReliabilityOptions>(configuration.GetSection("Reliability"));
+        services.Configure<WorkerOptions>(configuration.GetSection("WorkerPool"));
+        services.Configure<FairnessOptions>(configuration.GetSection("Fairness"));
+        services.Configure<HarnessOptions>(configuration.GetSection("Harness"));
 
-        services.AddSingleton<InProcessTaskQueue>();
-        services.AddScoped<SimulatedTaskExecutor>();
-        services.AddScoped<TaskFailureHandler>();
+        services.AddBuiltInTaskHandlers();
+        services.AddTaskHandler<RetentionHandler>();
+
+        services.AddSingleton<RelaySignals>();
         services.AddScoped<JobOrchestrator>();
+        services.AddScoped<TaskFailureHandler>();
+        services.AddScoped<TaskAttemptService>();
+        services.AddScoped<JobSubmissionService>();
+        services.AddScoped<JobOperations>();
+        services.AddScoped<ScheduleService>();
 
-        // Default no-op; the composition root (RelayForge.Api) registers the real
-        // SignalR-backed notifier after calling this method, which overrides this registration.
+        // Default no-op; the API registers the real SignalR-backed notifier after this call.
         services.AddScoped<IJobEventNotifier, NullJobEventNotifier>();
+
+        services.AddHostedService<PostgresListener>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Task execution: the worker pool, the lease-reclaim sweep and the scheduler (both
+    /// leader-elected), and the execution harness. Hosted by RelayForge.Worker, and by the API
+    /// too when WorkerPool:RunInApi is true (the single-process deployment).
+    /// </summary>
+    public static IServiceCollection AddRelayForgeWorkers(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddSingleton<RunningAttempts>();
+        services.AddSingleton<InProcessExecutor>();
+        services.AddSingleton<ProcessExecutor>();
+        services.AddSingleton<TaskExecutorSelector>();
+        services.AddScoped<AttemptRunner>();
 
         services.AddHostedService<WorkerPoolHostedService>();
         services.AddHostedService<ReliabilitySweepHostedService>();
+        services.AddHostedService<SchedulerHostedService>();
 
+        // Give in-flight attempts their grace period, plus time to report, before the host
+        // gives up on stopping.
+        var worker = configuration.GetSection("WorkerPool").Get<WorkerOptions>() ?? new WorkerOptions();
+        services.Configure<HostOptions>(o =>
+            o.ShutdownTimeout = TimeSpan.FromMilliseconds(worker.ShutdownGraceMs + worker.CancelGraceMs) + TimeSpan.FromSeconds(10));
+
+        return services;
+    }
+
+    /// <summary>Delivers outbox events to live clients. Hosted by the API.</summary>
+    public static IServiceCollection AddRelayForgeOutboxDispatcher(this IServiceCollection services)
+    {
+        services.AddHostedService<OutboxDispatcherHostedService>();
         return services;
     }
 

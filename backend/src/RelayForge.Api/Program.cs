@@ -1,18 +1,32 @@
 using Microsoft.EntityFrameworkCore;
+using OpenTelemetry.Trace;
 using RelayForge.Api.Endpoints;
 using RelayForge.Api.Realtime;
 using RelayForge.Infrastructure;
 using RelayForge.Infrastructure.Execution;
+using RelayForge.Infrastructure.Telemetry;
 
 var builder = WebApplication.CreateBuilder(args);
 
 const string FrontendCorsPolicy = "FrontendDev";
 
-builder.Services.AddRelayForgeInfrastructure(builder.Configuration);
+builder.Services.AddRelayForgeCore(builder.Configuration);
+builder.Services.AddRelayForgeOutboxDispatcher();
 
-// Overrides the no-op notifier AddRelayForgeInfrastructure registered -- last registration
-// of a service wins when resolved by interface, so this becomes the one that's actually used.
+// One process runs everything by default (the Railway deployment). Set WorkerPool:RunInApi=false
+// when RelayForge.Worker processes do the work (the Compose stack).
+if (builder.Configuration.GetValue("WorkerPool:RunInApi", true))
+{
+    builder.Services.AddRelayForgeWorkers(builder.Configuration);
+}
+
+builder.Services.AddRelayForgeTelemetry(builder.Configuration, "relayforge-api", tracing =>
+    tracing.AddAspNetCoreInstrumentation(o => o.Filter = ctx => !ctx.Request.Path.StartsWithSegments("/health")));
+
+// Overrides the no-op notifier AddRelayForgeCore registered -- last registration of a service
+// wins when resolved by interface, so this becomes the one the outbox dispatcher uses.
 builder.Services.AddScoped<IJobEventNotifier, SignalRJobEventNotifier>();
+builder.Services.AddHostedService<TaskLogRelay>();
 builder.Services.AddSignalR();
 
 builder.Services.AddCors(options =>
@@ -57,6 +71,12 @@ app.MapGet("/health/db", async (RelayForgeDbContext db, CancellationToken cancel
 });
 
 app.MapGroup("/api/jobs").MapJobEndpoints();
+app.MapGroup("/api/tasks").MapTaskEndpoints();
+app.MapGroup("/api/schedules").MapScheduleEndpoints();
+app.MapGroup("/api/handlers").MapHandlerEndpoints();
 app.MapHub<JobEventsHub>("/hubs/jobs");
 
 app.Run();
+
+// Lets the integration tests boot this host with WebApplicationFactory<Program>.
+public partial class Program;

@@ -37,13 +37,25 @@ namespace RelayForge.Infrastructure.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("DefinitionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("EventSequence")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Name")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<DateTimeOffset?>("PausedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("ScenarioKey")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset?>("ScheduledFor")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset?>("StartedAt")
                         .HasColumnType("timestamp with time zone");
@@ -53,9 +65,84 @@ namespace RelayForge.Infrastructure.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)");
 
+                    b.Property<string>("TenantId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("TraceParent")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.HasKey("Id");
 
+                    b.HasIndex("CompletedAt");
+
+                    b.HasIndex("DefinitionId", "ScheduledFor")
+                        .IsUnique()
+                        .HasFilter("\"DefinitionId\" IS NOT NULL");
+
                     b.ToTable("Jobs", (string)null);
+                });
+
+            modelBuilder.Entity("RelayForge.Domain.Entities.JobDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ConcurrencyPolicy")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Cron")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsSystem")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset?>("LastFiredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MisfirePolicy")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("NextFireAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Template")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("TimeZone")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.HasIndex("NextFireAt")
+                        .HasFilter("\"Enabled\"");
+
+                    b.ToTable("JobDefinitions", (string)null);
                 });
 
             modelBuilder.Entity("RelayForge.Domain.Entities.JobTask", b =>
@@ -65,6 +152,7 @@ namespace RelayForge.Infrastructure.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<int>("AttemptCount")
+                        .IsConcurrencyToken()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
                         .HasDefaultValue(0);
@@ -79,19 +167,27 @@ namespace RelayForge.Infrastructure.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
-                    b.Property<int?>("FailUntilAttempt")
-                        .HasColumnType("integer");
-
                     b.Property<Guid>("IdempotencyKey")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Isolation")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<Guid>("JobId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<DateTimeOffset?>("LeaseExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid?>("LeaseOwnerId")
+                        .IsConcurrencyToken()
                         .HasColumnType("uuid");
 
                     b.Property<int>("MaxAttempts")
@@ -107,8 +203,18 @@ namespace RelayForge.Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("NextAttemptAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<int>("SimulatedDurationMs")
+                    b.Property<string>("Output")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<int>("Priority")
                         .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("ReadyAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset?>("StartedAt")
                         .HasColumnType("timestamp with time zone");
@@ -118,15 +224,141 @@ namespace RelayForge.Infrastructure.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)");
 
+                    b.Property<int>("TimeoutMs")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("JobId");
 
+                    b.HasIndex("ReadyAt")
+                        .HasDatabaseName("IX_JobTasks_Ready")
+                        .HasFilter("\"State\" = 'Ready'");
+
+                    b.HasIndex("JobId", "Key")
+                        .IsUnique();
+
                     b.HasIndex("State", "LeaseExpiresAt");
 
-                    b.HasIndex("State", "NextAttemptAt");
-
                     b.ToTable("JobTasks", (string)null);
+                });
+
+            modelBuilder.Entity("RelayForge.Domain.Entities.OutboxEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DispatchedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Id")
+                        .HasDatabaseName("IX_OutboxEvents_Undispatched")
+                        .HasFilter("\"DispatchedAt\" IS NULL");
+
+                    b.HasIndex("JobId", "Sequence")
+                        .IsUnique();
+
+                    b.ToTable("OutboxEvents", (string)null);
+                });
+
+            modelBuilder.Entity("RelayForge.Domain.Entities.SubmitKey", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Key");
+
+                    b.HasIndex("JobId");
+
+                    b.ToTable("SubmitKeys", (string)null);
+                });
+
+            modelBuilder.Entity("RelayForge.Domain.Entities.TaskAttempt", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("Attempt")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("EndedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Outcome")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("RejectedLateResult")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("WorkerId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JobId");
+
+                    b.HasIndex("TaskId", "Attempt")
+                        .IsUnique();
+
+                    b.ToTable("TaskAttempts", (string)null);
                 });
 
             modelBuilder.Entity("RelayForge.Domain.Entities.TaskDependency", b =>
@@ -151,6 +383,55 @@ namespace RelayForge.Infrastructure.Migrations
                     b.ToTable("TaskDependencies", (string)null);
                 });
 
+            modelBuilder.Entity("RelayForge.Domain.Entities.TaskLogLine", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Attempt")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Line")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Stream")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TaskId", "Attempt", "Sequence")
+                        .IsUnique();
+
+                    b.ToTable("TaskLogs", (string)null);
+                });
+
+            modelBuilder.Entity("RelayForge.Domain.Entities.Job", b =>
+                {
+                    b.HasOne("RelayForge.Domain.Entities.JobDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("DefinitionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
             modelBuilder.Entity("RelayForge.Domain.Entities.JobTask", b =>
                 {
                     b.HasOne("RelayForge.Domain.Entities.Job", "Job")
@@ -160,6 +441,33 @@ namespace RelayForge.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Job");
+                });
+
+            modelBuilder.Entity("RelayForge.Domain.Entities.OutboxEvent", b =>
+                {
+                    b.HasOne("RelayForge.Domain.Entities.Job", null)
+                        .WithMany()
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("RelayForge.Domain.Entities.SubmitKey", b =>
+                {
+                    b.HasOne("RelayForge.Domain.Entities.Job", null)
+                        .WithMany()
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("RelayForge.Domain.Entities.TaskAttempt", b =>
+                {
+                    b.HasOne("RelayForge.Domain.Entities.JobTask", null)
+                        .WithMany("Attempts")
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("RelayForge.Domain.Entities.TaskDependency", b =>
@@ -181,6 +489,15 @@ namespace RelayForge.Infrastructure.Migrations
                     b.Navigation("JobTask");
                 });
 
+            modelBuilder.Entity("RelayForge.Domain.Entities.TaskLogLine", b =>
+                {
+                    b.HasOne("RelayForge.Domain.Entities.JobTask", null)
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("RelayForge.Domain.Entities.Job", b =>
                 {
                     b.Navigation("Tasks");
@@ -188,6 +505,8 @@ namespace RelayForge.Infrastructure.Migrations
 
             modelBuilder.Entity("RelayForge.Domain.Entities.JobTask", b =>
                 {
+                    b.Navigation("Attempts");
+
                     b.Navigation("Dependencies");
 
                     b.Navigation("Dependents");

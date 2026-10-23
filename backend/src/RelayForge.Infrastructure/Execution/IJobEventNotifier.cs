@@ -1,33 +1,46 @@
 namespace RelayForge.Infrastructure.Execution;
 
 /// <summary>
-/// One push notification about a job or task state change. TaskId/TaskName/TaskState are null
-/// for a job-level event (e.g. finalization); JobState always reflects the job's current state
-/// at the time of the push.
+/// One job event as clients receive it. Sequence is per job, starts at 1 and has no gaps, so a
+/// client can ignore one it has already seen and fetch the ones it missed
+/// (GET /api/jobs/{id}/events?after=N). TaskId/TaskName/TaskState/Attempt are null for a
+/// job-level event. JobState is the job's state as of the commit that produced the event.
 /// </summary>
 public record JobChangedEvent(
     Guid JobId,
+    int Sequence,
+    string Type,
     string JobState,
     Guid? TaskId,
     string? TaskName,
     string? TaskState,
-    string Message);
+    int? Attempt,
+    string Message,
+    DateTimeOffset At);
 
 /// <summary>
-/// Abstraction over "tell anyone watching this job that something changed." Kept in
-/// Infrastructure (no SignalR/ASP.NET Core dependency here) so the hosted services and
-/// orchestrator stay framework-agnostic; the real implementation (backed by a SignalR hub)
-/// lives in RelayForge.Api, which is the only project that needs to know about SignalR.
+/// An event a unit of work wants recorded; JobOrchestrator numbers it and writes it to the
+/// outbox in the same transaction.
+/// </summary>
+public record JobEventDraft(
+    string Type,
+    string Message,
+    Guid? TaskId = null,
+    string? TaskName = null,
+    string? TaskState = null,
+    int? Attempt = null);
+
+/// <summary>
+/// Delivers a committed event to anyone watching. Called only by the outbox dispatcher, never
+/// directly after a state change, so a push can't happen for a change that rolled back or go
+/// missing for one that committed. The real implementation (SignalR) lives in RelayForge.Api.
 /// </summary>
 public interface IJobEventNotifier
 {
     Task NotifyAsync(JobChangedEvent evt, CancellationToken cancellationToken);
 }
 
-/// <summary>
-/// Default no-op so nothing breaks if a composition root forgets to register a real notifier
-/// (e.g. in a future test harness).
-/// </summary>
+/// <summary>Default no-op for hosts without live clients (the worker host).</summary>
 public class NullJobEventNotifier : IJobEventNotifier
 {
     public Task NotifyAsync(JobChangedEvent evt, CancellationToken cancellationToken) => Task.CompletedTask;

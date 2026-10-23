@@ -1,0 +1,14 @@
+# RelayForge pushes metrics over OTLP (--web.enable-otlp-receiver), so there is nothing to scrape.
+global:
+  scrape_interval: 15s
+
+otlp:
+  # Keep which process a series came from.
+  promote_resource_attributes:
+    - service.name
+    - service.instance.id
+
+storage:
+  tsdb:
+    # OTLP pushes from several processes can arrive slightly out of order.
+    out_of_order_time_window: 30m

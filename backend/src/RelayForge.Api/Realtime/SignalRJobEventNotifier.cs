@@ -5,7 +5,8 @@ namespace RelayForge.Api.Realtime;
 
 /// <summary>
 /// The real IJobEventNotifier, backed by JobEventsHub. Pushes to the group named after the
-/// job id -- clients join that group via the hub's Subscribe(jobId) method.
+/// job id -- clients join that group via the hub's Subscribe(jobId) method. Only the outbox
+/// dispatcher calls it.
 /// </summary>
 public class SignalRJobEventNotifier : IJobEventNotifier
 {

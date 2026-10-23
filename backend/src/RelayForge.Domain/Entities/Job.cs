@@ -21,5 +21,21 @@ public class Job
     /// </summary>
     public DateTimeOffset? CancellationRequestedAt { get; set; }
 
+    /// <summary>Set while paused: running tasks finish, but nothing new is claimed or promoted.</summary>
+    public DateTimeOffset? PausedAt { get; set; }
+
+    /// <summary>Last outbox sequence number used for this job. Bumped under the job's row lock, so it has no gaps.</summary>
+    public int EventSequence { get; set; }
+
+    /// <summary>W3C traceparent of the submitting request, so worker spans join the submit's trace.</summary>
+    public string? TraceParent { get; set; }
+
+    /// <summary>Optional owner, used for per-tenant concurrency limits.</summary>
+    public string? TenantId { get; set; }
+
+    /// <summary>The schedule that created this job, and the time it was due. Unique together.</summary>
+    public Guid? DefinitionId { get; set; }
+    public DateTimeOffset? ScheduledFor { get; set; }
+
     public ICollection<JobTask> Tasks { get; set; } = new List<JobTask>();
 }

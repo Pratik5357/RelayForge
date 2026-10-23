@@ -333,7 +333,7 @@ export default function NewJobPage() {
                     <span className="flex min-w-0 flex-col">
                       <span className="break-words font-bold">{task.name}</span>
                       <span className="text-[13px] text-board-muted">
-                        {(task.simulatedDurationMs / 1000).toFixed(1)}s
+                        {((task.simulatedDurationMs ?? 0) / 1000).toFixed(1)}s
                         {task.dependsOn.length > 0 &&
                           ` · waits for ${task.dependsOn.map((k) => nameByKey.get(k) ?? k).join(", ")}`}
                         {task.failUntilAttempt !== undefined && ` · fails until try ${task.failUntilAttempt}`}

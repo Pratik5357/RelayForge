@@ -3,6 +3,8 @@
   <ItemGroup>
     <ProjectReference Include="..\RelayForge.Infrastructure\RelayForge.Infrastructure.csproj" />
     <ProjectReference Include="..\RelayForge.Domain\RelayForge.Domain.csproj" />
+    <!-- Ships RelayForge.Runner.dll next to the API, for Process isolation when workers run in-API. -->
+    <ProjectReference Include="..\RelayForge.Runner\RelayForge.Runner.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -10,6 +12,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.20.1" />
   </ItemGroup>
 
   <PropertyGroup>

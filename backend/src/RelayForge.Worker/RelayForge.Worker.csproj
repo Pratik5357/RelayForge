@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RelayForge.Infrastructure\RelayForge.Infrastructure.csproj" />
+    <!-- Ships RelayForge.Runner.dll next to the worker, for Process isolation. -->
+    <ProjectReference Include="..\RelayForge.Runner\RelayForge.Runner.csproj" />
+  </ItemGroup>
+
+</Project>

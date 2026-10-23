@@ -8,6 +8,7 @@ type State = JobState | TaskState;
 
 const LABEL: Record<State, string> = {
   Pending: "Pending",
+  Ready: "Ready",
   Running: "Running",
   Succeeded: "Succeeded",
   Failed: "Failed",
@@ -24,6 +25,7 @@ export function stateLabel(state: State): string {
 /** States whose lamp is lit (solid); the rest show a hollow ring. */
 const LIT: Record<State, boolean> = {
   Pending: false,
+  Ready: false,
   Running: true,
   Succeeded: true,
   Failed: true,

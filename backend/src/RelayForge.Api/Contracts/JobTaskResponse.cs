@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace RelayForge.Api.Contracts;
 
 public record JobTaskResponse(
@@ -11,4 +13,12 @@ public record JobTaskResponse(
     int AttemptCount,
     int MaxAttempts,
     DateTimeOffset? NextAttemptAt,
-    Guid IdempotencyKey);
+    Guid IdempotencyKey,
+    string Key,
+    string Type,
+    string Isolation,
+    int TimeoutMs,
+    int Priority,
+    JsonElement Payload,
+    JsonElement? Output,
+    IReadOnlyList<TaskAttemptResponse> Attempts);

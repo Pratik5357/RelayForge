@@ -55,6 +55,42 @@ public class JobFinalizationTests
     }
 
     [Fact]
+    public void Evaluate_FatalFailure_BlocksDependents_LikeADeadLetter()
+    {
+        var root = Guid.NewGuid();
+        var broken = Guid.NewGuid();
+        var downstream = Guid.NewGuid();
+
+        var result = JobFinalization.Evaluate(new[]
+        {
+            Task(root, TaskState.Succeeded),
+            Task(broken, TaskState.Failed, root),
+            Task(downstream, TaskState.Pending, broken),
+        });
+
+        Assert.True(result.IsFinal);
+        Assert.Equal(JobState.PartiallyFailed, result.FinalState);
+        Assert.Equal(new[] { downstream }, result.NewlyCancelledTaskIds);
+    }
+
+    [Fact]
+    public void Evaluate_ReadyTask_IsNotFinal()
+    {
+        // Ready = claimable or waiting out a retry backoff; either way the job isn't done.
+        var a = Guid.NewGuid();
+        var b = Guid.NewGuid();
+
+        var result = JobFinalization.Evaluate(new[]
+        {
+            Task(a, TaskState.Succeeded),
+            Task(b, TaskState.Ready, a),
+        });
+
+        Assert.False(result.IsFinal);
+        Assert.Empty(result.NewlyCancelledTaskIds);
+    }
+
+    [Fact]
     public void Evaluate_OneBranchDeadLettered_OneBranchSucceeded_IsPartiallyFailed()
     {
         // Diamond-free "two independent branches" shape: root -> {healthy, hopeless}

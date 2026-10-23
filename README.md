@@ -2,19 +2,31 @@
 
 RelayForge is a small distributed job scheduler, built to be watched while it runs — not just read about. You submit a "job" made of one or more steps (with dependencies between them), and RelayForge runs those steps, tracks their progress, and shows you exactly what's happening as it happens. See `docs/PROJECT_OVERVIEW.md` for the plain-language pitch and `docs/PROJECT_SPEC.md` for the original learning-project spec.
 
-## Current status: Phase 1 of 3 — Core Engine
+## Current status: v2
 
-This is a from-scratch rebuild. Phase 1 covers:
+v2 turns RelayForge from a demo of job semantics into an engine that does real work, scales across processes and can be operated. The plan it follows is the five-phase v2 roadmap. The decisions behind each phase are in [docs/DESIGN-v2.md](docs/DESIGN-v2.md).
 
-- DAG (dependency graph) modeling and execution, backed by PostgreSQL via EF Core.
-- Topological ordering and cycle detection.
-- An in-process worker pool (`System.Threading.Channels`) that runs independent steps in parallel and respects dependencies.
-- A minimal API to submit a job and check its status.
-- A frontend to submit a job by hand and watch it run (polling-based).
+- **Tasks do real work.** Each task has a handler `type` and a JSON `payload`. Built-in types are `simulated` (all demos), `delay`, `http.request` and `retention`. A handler returns success with an output, a retryable failure or a fatal failure. Outputs are passed to dependent tasks by key.
+- **Postgres is the queue.** Task states: `Pending` (waiting on a dependency) → `Ready` (claimable) → `Running` → `Succeeded`, `Failed` (fatal), `DeadLettered` (out of retries) or `Cancelled`. A retry is a `Ready` row with a future `NextAttemptAt`.
+- **Leases are heartbeated.** A claim lasts 15 s and is renewed every 5 s, so a healthy task of any length keeps it, and a dead worker's task is reclaimed within 15 s. Cancel stops running tasks too.
+- **Every attempt is recorded.** You can see who ran it, when and how it ended. The demo has two chaos scenarios (worker crash, frozen "zombie" worker) and a guarantees panel.
+- **Events go through an outbox.** They're numbered per job, delivered at least once, and replayable with `GET /api/jobs/{id}/events?after=N`.
+- **Workers scale out** as separate `RelayForge.Worker` processes. The lease sweep and the scheduler are leader-elected with a Postgres advisory lock.
+- **Tasks can run isolated** in their own process (or a container), which is killed at the time limit. Each attempt streams live logs.
+- **Schedules** run jobs on cron, with misfire and overlap policies. RelayForge runs its own nightly retention job this way.
+- **Operator actions:** redrive a failed step (it reopens the run), pause and resume a run, idempotent submit (`Idempotency-Key` header), priority with aging, and per-tenant running caps.
+- **Observability:** OpenTelemetry traces span the API and the workers across the queue, and metrics feed a Grafana dashboard.
 
-**Not built yet** (later phases): retry with backoff, dead-lettering, lease/heartbeat crash recovery, job cancellation, live push updates (SignalR), the six-scenario guided demo tour, and a real DAG graph visualization. Distributed workers (RabbitMQ/Redis) and the observability/deployment stack (Prometheus, Grafana, Docker, CI) are deferred until Docker is back in the picture.
+### Guarantees
 
-**Known Phase 1 limitation:** the worker queue is purely in-memory. If the API process restarts mid-job, that job stays stuck `Running` with no further progress — there's no lease/reclaim mechanism yet.
+- **No ready work is lost on a crash or restart.** Readiness is a row in the database, not an entry in process memory.
+- **A task's outcome, its consequences and its events commit together.** One transaction marks a task done, promotes its dependents (or finalizes the job) and writes the outbox events.
+- **A stale worker can't overwrite a newer attempt.** Every write after a claim is fenced on the lease owner and the attempt number. A late result is recorded as rejected and changes nothing.
+- **Mutations of one job are serialized** by its row lock, so concurrent completions can't both (or neither) finalize it.
+- **One scheduled time creates at most one run**, enforced by a unique index rather than by the scheduler's lock.
+- **Execution is at-least-once.** Handlers with side effects should send the task's `IdempotencyKey` downstream, as `http.request` does in the `Idempotency-Key` header.
+
+How far it scales on one machine, and why: [docs/LOADTEST.md](docs/LOADTEST.md).
 
 > Full list of settings, example values and troubleshooting: see [ENVIRONMENT.md](ENVIRONMENT.md).
 
@@ -57,11 +69,31 @@ cd backend
 
    It listens on `https://localhost:7054` (and `http://localhost:5284`) by default. Confirm it's up: `GET https://localhost:7054/health` should return `{"status":"ok"}`.
 
-Run the domain tests any time with:
+Run the tests with:
 
 ```bash
-dotnet test backend/tests/RelayForge.Domain.Tests
+dotnet test backend/tests/RelayForge.Domain.Tests        # pure DAG logic, no dependencies
+dotnet test backend/tests/RelayForge.IntegrationTests    # real host + Postgres; needs Docker running
 ```
+
+The integration tests start a throwaway Postgres container with Testcontainers and prove the guarantees above. They cover a restart between submit and claim, worker crashes and zombies, concurrent completions, cancel and graceful shutdown, handlers (including real HTTP), the outbox, several worker hosts with leader failover, schedules (including daylight-saving edge cases), the process harness, redrive, pause, fairness and retention.
+
+## Running the scale-out stack
+
+One command runs the API, several worker processes, Jaeger, Prometheus and Grafana in Docker:
+
+```bash
+docker compose --profile stack up -d --build --scale worker=3
+```
+
+| Service | URL |
+|---|---|
+| API | http://localhost:8080 (point the frontend at it with `NEXT_PUBLIC_API_URL=http://localhost:8080`) |
+| Jaeger (traces) | http://localhost:16686, service `relayforge-api` |
+| Prometheus | http://localhost:9090 |
+| Grafana (dashboard) | http://localhost:3001 |
+
+`docker compose up -d` without the profile still starts only Postgres, as before. The stack uses the same database, so stop your locally run API first.
 
 ## Frontend setup
 
@@ -92,9 +124,16 @@ RelayForge/
 ├── backend/
 │   ├── RelayForge.sln
 │   ├── src/
-│   │   ├── RelayForge.Api/            Minimal API host
+│   │   ├── RelayForge.Api/            HTTP + SignalR host, outbox dispatcher (runs workers too by default)
+│   │   ├── RelayForge.Worker/         Worker-only host: worker pool, lease sweep, scheduler
+│   │   ├── RelayForge.Runner/         Runs one task attempt in its own process (process/container isolation)
+│   │   ├── RelayForge.Handlers/       Task handler contract and the built-in handlers
 │   │   ├── RelayForge.Domain/         Entities, enums, DAG algorithms (no EF/ASP dependency)
-│   │   └── RelayForge.Infrastructure/ EF Core, in-process worker pool, orchestration
-│   └── tests/RelayForge.Domain.Tests/ Unit tests for the DAG logic
+│   │   └── RelayForge.Infrastructure/ EF Core, Postgres queue, orchestration, scheduling, telemetry
+│   ├── tests/
+│   │   ├── RelayForge.Domain.Tests/       Unit tests for the DAG logic
+│   │   └── RelayForge.IntegrationTests/   Testcontainers tests for every v2 guarantee
+│   └── tools/RelayForge.LoadTest/     Load generator (see docs/LOADTEST.md)
+├── deploy/                Prometheus and Grafana config for the Compose stack
 └── frontend/              Next.js (TypeScript, App Router, Tailwind)
 ```

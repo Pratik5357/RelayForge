@@ -42,22 +42,58 @@ const TERMS: Term[] = [
     seeIn: "Scenario 4, and any step marked Parked.",
   },
   {
-    name: "Lease",
+    name: "Lease and heartbeat",
     definition:
-      "A time-bound claim a worker holds on a step while running it. If the step's lease expires before it finishes — for instance because the process restarted — RelayForge treats it as crashed and gives it back to the queue.",
-    seeIn: "Not directly visible, but it's what lets a task recover after the API process is restarted mid-run.",
+      "A short, time-bound claim a worker holds on a step while running it, renewed every few seconds by a heartbeat. A healthy step of any length keeps its lease; if the worker dies or freezes, the heartbeat stops, the lease runs out, and the step is reclaimed and tried again.",
+    seeIn: "Scenario 7 — a worker crashes mid-step and another finishes it.",
+  },
+  {
+    name: "Fencing token",
+    definition:
+      "The try number, checked on every write a worker makes after claiming a step. A worker that froze past its lease still thinks it owns the step; when it finally reports, its try number is out of date and the result is rejected instead of overwriting the newer try.",
+    seeIn: "Scenario 8 — the frozen worker's late result is rejected.",
   },
   {
     name: "Idempotency key",
     definition:
-      "A stable identifier for a step that stays the same across every one of its retries, so two overlapping attempts at the same step can be told apart from two different steps.",
-    seeIn: "Included in each task's data; it's what keeps a reclaimed lease from double-running a step.",
+      "A stable identifier for a step that stays the same across every one of its retries. Steps send it to outside systems (as an Idempotency-Key header), so a retried payment or email is recognised as a repeat instead of happening twice.",
+    seeIn: "In each step's details, and in the header of every http.request call.",
+  },
+  {
+    name: "Retryable vs fatal error",
+    definition:
+      "A timeout or a 503 might work next time, so it's retried. A 404 or a malformed request never will, so the step fails at once instead of burning through its retries.",
+    seeIn: "Scenario 9 — the 404 fails on its first try.",
+  },
+  {
+    name: "Outbox",
+    definition:
+      "Every change and its event are saved in the same database transaction, then the events are pushed out. Each event in a run is numbered, so the page can tell when it missed one and fetch it.",
+    seeIn: "The # numbers in a run's Live events.",
+  },
+  {
+    name: "Process isolation",
+    definition:
+      "Running a step in its own process instead of inside the worker. A step that ignores requests to stop can then be killed when its time limit is up, without taking the worker down with it.",
+    seeIn: "Scenario 10 — the runaway step is killed at 3 seconds.",
   },
   {
     name: "Cancellation",
     definition:
-      "Stopping a job that's still going. Steps that haven't started yet are called off immediately; a step already in flight is left to finish naturally before the job is marked Cancelled.",
+      "Stopping a job that's still going. Steps that haven't started yet are called off immediately; steps already in flight are told to stop, then the job is marked Cancelled.",
     seeIn: "Scenario 6, via the Cancel button on any running job's detail page.",
+  },
+  {
+    name: "Redrive",
+    definition:
+      "Giving a parked or failed step fresh tries after the cause is fixed. If the run had already ended, it reopens, and the steps that were waiting on that step run too.",
+    seeIn: "The Redrive button in a parked step's details (try it after scenario 5).",
+  },
+  {
+    name: "Schedule (cron)",
+    definition:
+      "A job that starts itself on a timetable. Each scheduled time can create at most one run, and you choose what happens to times missed while RelayForge was down and to runs that overlap.",
+    seeIn: "The Schedules page. RelayForge also runs its own clean-up job there every night.",
   },
 ];
 

@@ -25,14 +25,14 @@ const HOLD_FRAMES = 6;
  * changes one thing, except tick 4, where both shards start together (that is the point).
  */
 function frameAt(t: number): Frame[] {
-  const setup: Frame = t === 0 ? { state: "Pending", tries: "0/3" } : t < 3 ? { state: "Running", tries: "1/3" } : { state: "Succeeded", tries: "1/3" };
+  const setup: Frame = t === 0 ? { state: "Ready", tries: "0/3" } : t < 3 ? { state: "Running", tries: "1/3" } : { state: "Succeeded", tries: "1/3" };
   const a: Frame = t < 4 ? { state: "Pending", tries: "0/3" } : { state: "Running", tries: "1/3" };
   const b: Record<number, Frame> = {
     4: { state: "Running", tries: "1/3" },
-    5: { state: "Pending", tries: "1/3", note: "Retrying in 2s" },
-    6: { state: "Pending", tries: "1/3", note: "Retrying in 1s" },
+    5: { state: "Ready", tries: "1/3", note: "Retrying in 2s" },
+    6: { state: "Ready", tries: "1/3", note: "Retrying in 1s" },
     7: { state: "Running", tries: "2/3" },
-    8: { state: "Pending", tries: "2/3", note: "Retrying in 4s" },
+    8: { state: "Ready", tries: "2/3", note: "Retrying in 4s" },
     9: { state: "Running", tries: "3/3" },
     10: { state: "DeadLettered", tries: "3/3", note: "gave up after 3 tries" },
   };
@@ -41,13 +41,14 @@ function frameAt(t: number): Frame[] {
 
 function rank(frame: Frame) {
   if (frame.state === "Running") return 0;
-  if (frame.state === "Pending" && frame.note) return 1;
-  if (frame.state === "Pending") return 2;
+  if (frame.state === "Ready" && frame.note) return 1;
+  if (frame.state === "Pending" || frame.state === "Ready") return 2;
   return 3;
 }
 
 const NOTE: Partial<Record<TaskState, string>> = {
-  Pending: "Waiting its turn",
+  Pending: "Waiting on an earlier step",
+  Ready: "Up next",
   Running: "Working now",
   Succeeded: "Finished",
 };

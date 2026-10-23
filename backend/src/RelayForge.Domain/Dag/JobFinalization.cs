@@ -4,13 +4,15 @@ namespace RelayForge.Domain.Dag;
 
 /// <summary>
 /// Pure evaluation of "is this job done, and what happened" given the current state of its
-/// tasks. Two responsibilities:
+/// tasks (Ready tasks -- claimable, or waiting out a retry backoff -- count as still in
+/// flight). Two responsibilities:
 ///   1. Identify Pending tasks that can never become ready because they transitively depend
-///      on a DeadLettered (or already-blocked) task -- these should be marked Cancelled.
+///      on a failed (DeadLettered or Failed) or already-blocked task -- these should be marked
+///      Cancelled.
 ///   2. Decide whether the job as a whole is finished, and if so, its final state:
 ///        all Succeeded                                  -> Succeeded
-///        at least one Succeeded AND at least one DeadLettered/blocked -> PartiallyFailed
-///        zero Succeeded AND at least one DeadLettered    -> Failed
+///        at least one Succeeded AND at least one failed/blocked -> PartiallyFailed
+///        zero Succeeded AND at least one failed           -> Failed
 /// No DB access -- callers own applying NewlyCancelledTaskIds and FinalState to the actual
 /// entities.
 /// </summary>
@@ -39,7 +41,7 @@ public static class JobFinalization
 
                 var blockedByDependency = t.DependsOn.Any(depId =>
                     stateById.TryGetValue(depId, out var depState) &&
-                    (depState == TaskState.DeadLettered || blocked.Contains(depId)));
+                    (IsFailure(depState) || blocked.Contains(depId)));
 
                 if (blockedByDependency)
                 {
@@ -49,7 +51,7 @@ public static class JobFinalization
             }
         }
 
-        var hasRunning = tasks.Any(t => t.State == TaskState.Running);
+        var hasRunning = tasks.Any(t => t.State is TaskState.Running or TaskState.Ready);
         var hasRunnablePending = tasks.Any(t => t.State == TaskState.Pending && !blocked.Contains(t.Id));
 
         if (hasRunning || hasRunnablePending)
@@ -58,7 +60,7 @@ public static class JobFinalization
         }
 
         var anySucceeded = tasks.Any(t => t.State == TaskState.Succeeded);
-        var anyDeadOrBlocked = tasks.Any(t => t.State == TaskState.DeadLettered) || blocked.Count > 0;
+        var anyDeadOrBlocked = tasks.Any(t => IsFailure(t.State)) || blocked.Count > 0;
 
         JobState finalState = (anySucceeded, anyDeadOrBlocked) switch
         {
@@ -70,4 +72,6 @@ public static class JobFinalization
 
         return new Result(blocked.ToList(), IsFinal: true, FinalState: finalState);
     }
+
+    private static bool IsFailure(TaskState state) => state is TaskState.DeadLettered or TaskState.Failed;
 }

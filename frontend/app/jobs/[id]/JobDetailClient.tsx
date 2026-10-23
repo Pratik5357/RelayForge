@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ApiError, cancelJob } from "@/lib/api";
-import { isJobFinished, type JobState } from "@/lib/types";
+import { ApiError, cancelJob, pauseJob, resumeJob } from "@/lib/api";
+import { isJobFinished, type Invariants, type JobState } from "@/lib/types";
 import { findScenario } from "@/lib/scenarios";
 import { useLiveJob } from "@/lib/hooks";
 import { toDagLevels } from "@/lib/dag";
@@ -43,11 +43,12 @@ const SOURCE_LABEL: Record<string, string> = {
 
 export function JobDetailClient({ jobId }: { jobId: string }) {
   const scenario = findScenario(useSearchParams().get("scenario"));
-  const { job, events, source, error, attempts } = useLiveJob(jobId);
+  const { job, setJob, events, source, error, attempts, logTicks } = useLiveJob(jobId);
   const [now, setNow] = useState(() => Date.now());
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [pausing, setPausing] = useState(false);
   const [openStep, setOpenStep] = useState<string | null>(null);
   // Keeps the last opened step's content on screen while the panel animates closed.
   const [shownStep, setShownStep] = useState<string | null>(null);
@@ -73,6 +74,18 @@ export function JobDetailClient({ jobId }: { jobId: string }) {
       setCancelError(err instanceof ApiError ? err.message : "Could not cancel this job.");
     } finally {
       setCancelling(false);
+    }
+  }
+
+  async function togglePause(paused: boolean) {
+    setPausing(true);
+    setCancelError(null);
+    try {
+      setJob(await (paused ? resumeJob(jobId) : pauseJob(jobId)));
+    } catch (err) {
+      setCancelError(err instanceof ApiError ? err.message : "Could not change this run.");
+    } finally {
+      setPausing(false);
     }
   }
 
@@ -105,6 +118,7 @@ export function JobDetailClient({ jobId }: { jobId: string }) {
   const doneCount = job.tasks.filter((t) => ["Succeeded", "Failed", "DeadLettered", "Cancelled"].includes(t.state)).length;
   const finished = isJobFinished(job.state);
   const cancelRequested = Boolean(job.cancellationRequestedAt) && !finished;
+  const paused = Boolean(job.pausedAt) && !finished;
   const failures = job.tasks.filter((t) => t.errorMessage);
   // Scenario copy leads with the state the demo should end in ("PartiallyFailed — …").
   const expectedState = scenario ? (scenario.expected.split(/\s/)[0] as JobState) : null;
@@ -153,14 +167,19 @@ export function JobDetailClient({ jobId }: { jobId: string }) {
               <span className="break-all font-mono text-xs leading-normal text-board-muted">{job.id}</span>
             </div>
             {!finished ? (
-              <Button
-                variant="board"
-                onClick={() => setConfirmOpen(true)}
-                disabled={cancelling || cancelRequested}
-                aria-haspopup="dialog"
-              >
-                {cancelling || cancelRequested ? "Cancelling…" : "Cancel run"}
-              </Button>
+              <div className="flex flex-wrap gap-2.5">
+                <Button
+                  variant="board"
+                  onClick={() => setConfirmOpen(true)}
+                  disabled={cancelling || cancelRequested}
+                  aria-haspopup="dialog"
+                >
+                  {cancelling || cancelRequested ? "Cancelling…" : "Cancel run"}
+                </Button>
+                <Button variant="board" onClick={() => togglePause(paused)} disabled={pausing || cancelRequested}>
+                  {paused ? "Resume" : "Pause"}
+                </Button>
+              </div>
             ) : (
               <div className="flex flex-col gap-3">
                 {expectedState && <ScanStamp expected={expectedState} actual={job.state} live={sawRunning} />}
@@ -171,11 +190,16 @@ export function JobDetailClient({ jobId }: { jobId: string }) {
         </article>
       </div>
 
-      {(cancelRequested || cancelError) && (
+      {(cancelRequested || cancelError || paused) && (
         <div className="-mt-8 flex flex-col gap-2">
           {cancelRequested && (
             <p role="status" className="fade-up rounded-xl bg-board px-[18px] py-3.5 text-board-text">
-              Cancelling. Waiting for the step that is mid-flight to finish…
+              Cancelling. Steps in flight are being told to stop…
+            </p>
+          )}
+          {paused && !cancelRequested && (
+            <p role="status" className="fade-up rounded-xl bg-board px-[18px] py-3.5 text-board-text">
+              Paused. Steps already running will finish; nothing new starts until you resume.
             </p>
           )}
           {cancelError && (
@@ -212,8 +236,8 @@ export function JobDetailClient({ jobId }: { jobId: string }) {
         <RunTimeline job={job} attempts={attempts} now={now} />
         <p className="text-sm text-muted">
           Steps that start at the same moment are running side by side. Each failed try waits a
-          little longer than the one before it. Drawn from what this page has seen, so open a run
-          while it&rsquo;s going to catch every try.
+          little longer than the one before it. Every try is recorded by the server, so this is
+          complete even for a run you open after it ended.
         </p>
       </Reveal>
 
@@ -226,6 +250,8 @@ export function JobDetailClient({ jobId }: { jobId: string }) {
         </div>
         <StepsBoard tasks={job.tasks} now={now} onOpen={openSheet} />
       </Reveal>
+
+      {job.invariants.attempts > 0 && <Guarantees invariants={job.invariants} />}
 
       {failures.length > 0 && (
         <Reveal as="section" aria-labelledby="why-heading" className="flex flex-col gap-4">
@@ -278,6 +304,7 @@ export function JobDetailClient({ jobId }: { jobId: string }) {
             waits={sheetTask.dependsOn.map((id) => nameById.get(id) ?? id).join(", ") || "nothing"}
             attempts={attempts[sheetTask.id] ?? []}
             events={events}
+            logTick={logTicks[sheetTask.id] ?? 0}
             onClose={() => setOpenStep(null)}
           />
         )}
@@ -296,8 +323,8 @@ export function JobDetailClient({ jobId }: { jobId: string }) {
             Cancel this run?
           </h2>
           <p id="cancel-desc" className="text-muted">
-            Steps that haven&rsquo;t started yet are called off right away. A step already in flight
-            is left to finish, then the run is marked Cancelled.
+            Steps that haven&rsquo;t started yet are called off right away. Steps already in
+            flight are told to stop, then the run is marked Cancelled.
           </p>
           <div className="mt-2 flex flex-wrap justify-end gap-2.5">
             <Button variant="secondary" onClick={() => setConfirmOpen(false)} autoFocus>
@@ -310,5 +337,38 @@ export function JobDetailClient({ jobId }: { jobId: string }) {
         </div>
       </Overlay>
     </PageTransition>
+  );
+}
+
+/**
+ * What the attempt history proves about this run. The point of the chaos demos: however many
+ * workers die or freeze, a step never completes twice.
+ */
+function Guarantees({ invariants }: { invariants: Invariants }) {
+  const cells: [string, number, string, boolean][] = [
+    ["Tries", invariants.attempts, "attempts the workers made, in total", false],
+    ["Successes", invariants.succeededAttempts, "tries that completed a step", false],
+    ["Duplicate completions", invariants.duplicateCompletions, "steps completed more than once: must be 0", invariants.duplicateCompletions > 0],
+    ["Leases reclaimed", invariants.leasesReclaimed, "tries whose worker went silent and were taken back", false],
+    ["Stale results rejected", invariants.staleResultsRejected, "late results from a worker that had lost its lease", false],
+  ];
+
+  return (
+    <Reveal as="section" aria-labelledby="guarantees-heading" className="flex flex-col gap-4">
+      <h2 id="guarantees-heading" className="text-[40px] leading-none tracking-[-0.035em]">
+        Guarantees
+      </h2>
+      <dl className="on-board grid grid-cols-2 gap-px overflow-hidden rounded-2xl bg-board-rule text-board-text sm:grid-cols-5">
+        {cells.map(([term, value, hint, bad]) => (
+          <div key={term} className="flex flex-col gap-1 bg-board px-5 py-4">
+            <dt className="label text-board-muted">{term}</dt>
+            <dd className="tnum font-mono text-[30px] font-medium" style={bad ? { color: "var(--remark-failed)" } : undefined}>
+              {value}
+            </dd>
+            <dd className="text-xs text-board-muted">{hint}</dd>
+          </div>
+        ))}
+      </dl>
+    </Reveal>
   );
 }
