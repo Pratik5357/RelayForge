@@ -44,10 +44,10 @@ public static class ScheduleCalculator
         return null;
     }
 
-    /// <summary>The first fire time strictly after <paramref name="after"/>.</summary>
+    /// <summary>The first fire time strictly after <paramref name="after"/>, in UTC.</summary>
     public static DateTimeOffset Next(string cron, string timeZone, DateTimeOffset after) =>
-        CronExpression.Parse(cron).GetNextOccurrence(after, TimeZoneInfo.FindSystemTimeZoneById(timeZone))
-        ?? throw new InvalidOperationException($"Cron '{cron}' never fires again.");
+        (CronExpression.Parse(cron).GetNextOccurrence(after, TimeZoneInfo.FindSystemTimeZoneById(timeZone))
+         ?? throw new InvalidOperationException($"Cron '{cron}' never fires again.")).ToUniversalTime();
 
     /// <summary>
     /// Which scheduled times to run now, given the schedule was due at <paramref name="nextFireAt"/>
@@ -75,7 +75,8 @@ public static class ScheduleCalculator
                 due.RemoveAt(0);
             }
 
-            t = expression.GetNextOccurrence(at, zone);
+            // Cronos answers in the zone's offset; everything stored is UTC.
+            t = expression.GetNextOccurrence(at, zone)?.ToUniversalTime();
         }
 
         var next = t ?? throw new InvalidOperationException($"Cron '{cron}' never fires again.");

@@ -33,12 +33,18 @@ public class JobOperations
     private readonly RelayForgeDbContext _db;
     private readonly JobOrchestrator _orchestrator;
     private readonly ReliabilityOptions _reliability;
+    private readonly FairnessOptions _fairness;
 
-    public JobOperations(RelayForgeDbContext db, JobOrchestrator orchestrator, IOptions<ReliabilityOptions> reliability)
+    public JobOperations(
+        RelayForgeDbContext db,
+        JobOrchestrator orchestrator,
+        IOptions<ReliabilityOptions> reliability,
+        IOptions<FairnessOptions> fairness)
     {
         _db = db;
         _orchestrator = orchestrator;
         _reliability = reliability.Value;
+        _fairness = fairness.Value;
     }
 
     /// <summary>
@@ -161,8 +167,7 @@ public class JobOperations
             var now = DateTimeOffset.UtcNow;
 
             // AttemptCount keeps counting (it's the fencing token); the budget moves instead.
-            task.State = TaskState.Ready;
-            task.ReadyAt = now;
+            task.MarkReady(now, _fairness.AgingSeconds);
             task.MaxAttempts = task.AttemptCount + budget;
             task.NextAttemptAt = null;
             task.CompletedAt = null;

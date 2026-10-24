@@ -37,9 +37,9 @@ public class JobTaskConfiguration : IEntityTypeConfiguration<JobTask>
         builder.HasIndex(t => new { t.JobId, t.Key }).IsUnique();
         builder.HasIndex(t => new { t.State, t.LeaseExpiresAt });
 
-        // Matches the claim query, and stays small: only Ready rows are in it, however many
-        // finished tasks the table holds.
-        builder.HasIndex(t => t.ReadyAt)
+        // Serves the claim query's ORDER BY directly, and stays small: only Ready rows are in
+        // it, however many finished tasks the table holds.
+        builder.HasIndex(t => t.ClaimOrder)
             .HasFilter("\"State\" = 'Ready'")
             .HasDatabaseName("IX_JobTasks_Ready");
 

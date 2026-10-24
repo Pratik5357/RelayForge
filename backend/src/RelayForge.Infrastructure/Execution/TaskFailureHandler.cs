@@ -15,10 +15,12 @@ namespace RelayForge.Infrastructure.Execution;
 public class TaskFailureHandler
 {
     private readonly ReliabilityOptions _options;
+    private readonly int _agingSeconds;
 
-    public TaskFailureHandler(IOptions<ReliabilityOptions> options)
+    public TaskFailureHandler(IOptions<ReliabilityOptions> options, IOptions<FairnessOptions> fairness)
     {
         _options = options.Value;
+        _agingSeconds = fairness.Value.AgingSeconds;
     }
 
     /// <param name="cancellationRequested">
@@ -50,9 +52,8 @@ public class TaskFailureHandler
                 delay = asked;
             }
 
-            task.State = TaskState.Ready;
             task.NextAttemptAt = DateTimeOffset.UtcNow.Add(delay);
-            task.ReadyAt = task.NextAttemptAt;
+            task.MarkReady(task.NextAttemptAt.Value, _agingSeconds);
         }
         else
         {

@@ -53,6 +53,7 @@ docker compose up -d        # starts relayforge-postgres on localhost:5433
 | `Harness:RunnerPath` | No | `/app/RelayForge.Runner.dll` | Runner for `"isolation": "Process"`. Defaults to the one shipped next to the API/worker. |
 | `Harness:ContainerImage` | No (default `relayforge-runner`) | `relayforge-runner` | Image for `"isolation": "Container"` (build it with `docker build --target runner -t relayforge-runner backend`). Needs the `docker` CLI on the worker's machine. |
 | `Retention:Days` / `Retention:Cron` | No (defaults `7`, `0 3 * * *`) | `7` | The built-in retention schedule, created the first time a scheduler starts. Change it later on the Schedules page. |
+| `SignalR:Redis` | Only for 2+ API instances | `localhost:6379` | Redis backplane, so a browser on one API instance gets pushes sent by another. |
 | `Otel:TracesEndpoint` | No | `http://localhost:4317` | OTLP/gRPC endpoint for traces (Jaeger). Off when unset. |
 | `Otel:MetricsEndpoint` | No | `http://localhost:9090/api/v1/otlp/v1/metrics` | OTLP/HTTP endpoint for metrics (Prometheus with `--web.enable-otlp-receiver`). Off when unset. |
 | `ASPNETCORE_ENVIRONMENT` | No | `Development` | Set automatically by `dotnet run` through `launchSettings.json`. |

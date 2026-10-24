@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using RelayForge.Domain.Dag;
 using RelayForge.Domain.Entities;
 using RelayForge.Domain.Enums;
@@ -26,10 +27,12 @@ namespace RelayForge.Infrastructure.Execution;
 public class JobOrchestrator
 {
     private readonly RelayForgeDbContext _db;
+    private readonly int _agingSeconds;
 
-    public JobOrchestrator(RelayForgeDbContext db)
+    public JobOrchestrator(RelayForgeDbContext db, IOptions<FairnessOptions> fairness)
     {
         _db = db;
+        _agingSeconds = fairness.Value.AgingSeconds;
     }
 
     /// <summary>
@@ -73,15 +76,14 @@ public class JobOrchestrator
 
             var promotedAny = await AdvanceAsync(jobId, events, ct);
 
-            // NOTIFY is queued now and delivered only if the transaction commits.
-            if (promotedAny)
-            {
-                await _db.Database.ExecuteSqlRawAsync($"SELECT pg_notify('{PgChannels.Ready}', '')", ct);
-            }
+            // NOTIFY is queued now and delivered only if the transaction commits. One round trip.
+            var channels = new List<string>();
+            if (promotedAny) channels.Add($"pg_notify('{PgChannels.Ready}', '')");
+            if (events.Count > 0) channels.Add($"pg_notify('{PgChannels.Outbox}', '')");
 
-            if (events.Count > 0)
+            if (channels.Count > 0)
             {
-                await _db.Database.ExecuteSqlRawAsync($"SELECT pg_notify('{PgChannels.Outbox}', '')", ct);
+                await _db.Database.ExecuteSqlRawAsync($"SELECT {string.Join(", ", channels)}", ct);
             }
 
             await tx.CommitAsync(ct);
@@ -110,7 +112,7 @@ public class JobOrchestrator
 
         if (job.State is not (JobState.Succeeded or JobState.Failed or JobState.PartiallyFailed or JobState.Cancelled))
         {
-            promoted = Advance(job, events, now);
+            promoted = Advance(job, events, now, _agingSeconds);
         }
 
         AppendToOutbox(job, events, now);
@@ -118,7 +120,7 @@ public class JobOrchestrator
         return promoted.Count > 0;
     }
 
-    private static List<JobTask> Advance(Job job, List<JobEventDraft> events, DateTimeOffset now)
+    private static List<JobTask> Advance(Job job, List<JobEventDraft> events, DateTimeOffset now, int agingSeconds)
     {
         var tasks = job.Tasks.ToList();
         var tasksById = tasks.ToDictionary(t => t.Id);
@@ -153,8 +155,7 @@ public class JobOrchestrator
 
             foreach (var id in readyIds)
             {
-                tasksById[id].State = TaskState.Ready;
-                tasksById[id].ReadyAt = now;
+                tasksById[id].MarkReady(now, agingSeconds);
                 promoted.Add(tasksById[id]);
             }
         }

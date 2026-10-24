@@ -157,6 +157,9 @@ namespace RelayForge.Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasDefaultValue(0);
 
+                    b.Property<double>("ClaimOrder")
+                        .HasColumnType("double precision");
+
                     b.Property<DateTimeOffset?>("CompletedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -234,11 +237,11 @@ namespace RelayForge.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("JobId");
-
-                    b.HasIndex("ReadyAt")
+                    b.HasIndex("ClaimOrder")
                         .HasDatabaseName("IX_JobTasks_Ready")
                         .HasFilter("\"State\" = 'Ready'");
+
+                    b.HasIndex("JobId");
 
                     b.HasIndex("JobId", "Key")
                         .IsUnique();

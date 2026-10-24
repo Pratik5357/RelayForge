@@ -7,6 +7,8 @@ namespace RelayForge.Api.Realtime;
 /// Turns "task X wrote log lines" notifications (from any worker process, via Postgres NOTIFY)
 /// into a "taskLogs" push to the job's SignalR group. The push carries no lines: watching
 /// clients fetch what's new from GET /api/tasks/{id}/logs, so a dropped push costs nothing.
+/// With the Redis backplane and N API instances, every instance hears the NOTIFY and pushes, so
+/// a client gets N hints per batch of lines; each just triggers a cheap refetch.
 /// </summary>
 public sealed class TaskLogRelay : IHostedService
 {

@@ -176,7 +176,7 @@ export const SCENARIOS: Scenario[] = [
       "charge-card goes Running on one worker, then that worker stops heartbeating.",
       "About 15 seconds later its lease expires and the step is reclaimed.",
       "Try 2 runs on a different worker and succeeds.",
-      "Guarantees: 2 tries, 1 success, 1 lease reclaimed, 0 duplicate completions.",
+      "Guarantees: 3 tries in all (2 for charge-card), 2 successes, 1 lease reclaimed, 0 duplicate completions.",
     ],
     expected: "Succeeded — reclaimed after the crash, completed once.",
     runtime: "~20s",

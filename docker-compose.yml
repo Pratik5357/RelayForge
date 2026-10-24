@@ -2,7 +2,10 @@
 # your machine as before (dotnet run / npm run dev).
 #
 # The full scale-out stack: `docker compose --profile stack up -d --build --scale worker=3`
-#   api         http://localhost:8080   HTTP + SignalR + outbox dispatcher (runs no workers)
+#   api         http://localhost:8080   HTTP + SignalR + outbox dispatcher (runs no workers).
+#               Scale it too once the first one has migrated: `--scale api=2` serves 8080-8081,
+#               and the Redis backplane delivers every push to whichever instance a browser is on.
+#   redis       SignalR backplane
 #   worker      RelayForge.Worker x N   claim and run tasks; sweep + scheduler are leader-elected
 #   jaeger      http://localhost:16686  traces: POST /api/jobs -> task.execute, across processes
 #   prometheus  http://localhost:9090   metrics, pushed over OTLP
@@ -43,14 +46,16 @@ services:
     build: { context: ./backend, target: api }
     depends_on:
       postgres: { condition: service_healthy }
+      redis: { condition: service_started }
     environment:
       <<: *relayforge-env
       # Only the API migrates; workers start once it's healthy.
       Database__MigrateOnStartup: "true"
       WorkerPool__RunInApi: "false"
       Cors__AllowedOrigins__0: http://localhost:3000
+      SignalR__Redis: redis:6379
     ports:
-      - "8080:8080"
+      - "8080-8082:8080"
     healthcheck:
       # The aspnet image has no curl; bash's /dev/tcp is enough for one GET.
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health/db HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
@@ -66,6 +71,10 @@ services:
     environment:
       <<: *relayforge-env
       WorkerPool__Concurrency: "4"
+
+  redis:
+    profiles: ["stack"]
+    image: redis:7-alpine
 
   jaeger:
     profiles: ["stack"]

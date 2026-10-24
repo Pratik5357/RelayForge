@@ -37,8 +37,16 @@ public class JobTask
     public DateTimeOffset? CompletedAt { get; set; }
     public string? ErrorMessage { get; set; }
 
-    /// <summary>When the task last became Ready (or, for a retry, became due); workers claim the oldest first.</summary>
+    /// <summary>When the task last became Ready (or, for a retry, became due).</summary>
     public DateTimeOffset? ReadyAt { get; set; }
+
+    /// <summary>
+    /// Claim order: lowest first. Seconds since the epoch of <see cref="ReadyAt"/>, minus
+    /// Priority x the aging period. Ordering by this is exactly ordering by "priority + seconds
+    /// waited / aging period" (now() is the same for every row of one query), but unlike that
+    /// expression it is fixed per row, so an index can serve the claim.
+    /// </summary>
+    public double ClaimOrder { get; set; }
 
     // Reliability
     /// <summary>Number of the latest attempt. Only ever goes up, so it doubles as the fencing token.</summary>
@@ -48,6 +56,14 @@ public class JobTask
     public Guid? LeaseOwnerId { get; set; }
     public DateTimeOffset? LeaseExpiresAt { get; set; }
     public Guid IdempotencyKey { get; set; } = Guid.NewGuid();
+
+    /// <summary>Makes the task claimable from <paramref name="readyAt"/> on (a retry: from when it is due).</summary>
+    public void MarkReady(DateTimeOffset readyAt, int agingSeconds)
+    {
+        State = TaskState.Ready;
+        ReadyAt = readyAt;
+        ClaimOrder = readyAt.ToUnixTimeMilliseconds() / 1000.0 - (double)Priority * Math.Max(1, agingSeconds);
+    }
 
     public ICollection<TaskDependency> Dependencies { get; set; } = new List<TaskDependency>();
     public ICollection<TaskDependency> Dependents { get; set; } = new List<TaskDependency>();

@@ -1,52 +1,67 @@
 # Load test: throughput vs workers
 
-**Result: adding a second worker process made RelayForge slower, not faster (143 → 98 tasks/s).** The bottleneck is the per-job row lock that serializes every change to one job, not the claim query or worker CPU.
+**Result: after two fixes, a second worker process nearly doubles throughput (77.6 → 139.9 tasks/s). With four, Postgres hits its 1-CPU cap and throughput levels off at 123.6.** Before the fixes, a second worker made RelayForge slower.
 
-## Setup
+![Throughput vs worker processes](throughput.svg)
 
-- Stack: `docker compose --profile stack up -d --build --scale worker=N` on one MacBook (Docker Desktop, arm64). Postgres, the API and every worker share the same machine.
-- Each worker process runs `WorkerPool:Concurrency=4` consumers.
-- Load: `tools/RelayForge.LoadTest --jobs 1000 --tasks 10 --duration 10`. That's 1,000 jobs, each with a root task, 8 parallel middle tasks and a sink task (10,000 simulated tasks of 10 ms each), submitted 16 at a time.
-- Throughput is end to end: tasks finished ÷ (last job finished − first submit).
-- `pg_stat_statements` was reset before each run.
+## Round 2: after the fixes (CPU-capped)
 
-## Results
+The whole stack ran with hard Docker CPU caps, so it couldn't load the laptop: Postgres 1 CPU, the API 0.5, each worker 0.5, and Redis, Jaeger, Prometheus and Grafana 0.25 each. That's at most about 3.5 of 8 cores, and the busiest run used about 3.
 
-| Worker processes | Consumers | Tasks/s | Wall time | Avg wait, job row lock | Avg claim query |
-|---|---|---|---|---|---|
-| 1 | 4 | 143 | 70 s | 1.1 ms | 3.4 ms |
-| 2 | 8 | 98 | 102 s | 11.5 ms | 11.4 ms |
+| Worker processes | Tasks/s | Wall time | Job lock wait (avg) | Started event (avg) | Claim (avg) | CPU where it stalls |
+|---|---|---|---|---|---|---|
+| 1 | 77.6 | 25.8 s | 3.4 ms | 3.1 ms | 0.70 ms | worker at its 0.5 cap |
+| 2 | 139.9 | 14.3 s | 7.3 ms | 4.9 ms | 1.01 ms | Postgres at its 1.0 cap |
+| 4 | 123.6 | 16.2 s | 26.4 ms | 10.6 ms | 0.64 ms | Postgres at its 1.0 cap |
 
-The 4- and 8-worker runs were stopped. The machine was already above 80% CPU, and two points were enough to show the trend.
+Load: `--jobs 200 --tasks 10 --duration 10`. Each job has a root task, 8 parallel middle tasks and a sink task, so 2,000 simulated tasks of 10 ms each.
 
-## Why it plateaus (and then drops)
+## Round 1: before the fixes (uncapped)
 
-Top statements by total time, 2 workers:
-
-| Statement | Calls | Avg | Total |
+| Worker processes | Tasks/s | Job lock wait (avg) | Claim (avg) |
 |---|---|---|---|
-| `SELECT 1 FROM "Jobs" WHERE "Id" = $1 FOR UPDATE` | 21,000 | 11.5 ms | 242 s |
-| Claim (`WITH candidate AS (… FOR UPDATE OF t SKIP LOCKED) …`) | 10,028 | 11.4 ms | 115 s |
-| Job list for the load tool's polling | 810 | 8.8 ms | 7 s |
+| 1 | 143 | 1.1 ms | 3.4 ms |
+| 2 | 98 | 11.5 ms | 11.4 ms |
 
-1. **The job row lock.** Every unit that changes a job takes its row lock first: start, completion, reclaim and cancel. This is the F5 fix. In this DAG, the 8 middle tasks of a job become Ready together, run together and finish together. Their 16 start and completion units then queue on that one row. With one worker process only 4 consumers compete for it. With two processes, 8 can be busy on the same job at once, and each waits behind the others. Lock time went up 10×, while useful work per task stayed the same.
-2. **The claim query.** It got 3× slower with more consumers. The partial index on Ready rows keeps the scan small. But the priority aging term (`priority + age / AgingSeconds`) depends on `now()`, so no index can serve the `ORDER BY`. Every claim sorts all Ready rows, and with more consumers more claims run during the same sorts.
-3. **Shared hardware.** Postgres, the API, the workers and the load generator all ran on one laptop. Extra worker processes took CPU from Postgres.
+Load: `--jobs 1000`, with no CPU caps, so its absolute numbers don't compare with round 2. What compares is the shape. Before the fixes, adding a worker cut throughput by a third. After them, it nearly doubles throughput, until the database runs out of CPU.
 
-## What would raise the ceiling
+## What round 1 found, and what changed
 
-- **Shorter time under the job lock.** The started event doesn't need the lock: it could be numbered with a per-job sequence (`UPDATE "Jobs" SET "EventSequence" = "EventSequence" + 1 RETURNING`) instead. That would remove about half of the lock acquisitions. The advance step could also load only the dependents of the finished task instead of the whole job.
-- **Cheaper claims.** Claim a batch per round trip (`LIMIT n`) and hand the rows to local consumers. Also replace aging with a stored `EffectivePriority` that a periodic job bumps, so the claim can use an index on `(EffectivePriority DESC, ReadyAt)`.
-- **Real hardware separation** before reading too much into absolute numbers: Postgres on its own machine, and the workers elsewhere.
+1. **The started event held the job lock for a whole unit of work.** Every claim was followed by a full locked transaction: lock the job row, load the whole job and its tasks, save, advance, write the event, commit. All of that was just to number one "started" event. Siblings of one job queued behind each other. **Fix:** a start is now a single statement. It bumps the job's event number, inserts the outbox row and sends the NOTIFY, holding the row lock only for that one statement. Completions still take the full lock, because they change the DAG.
+2. **The claim couldn't use an index.** It sorted all Ready rows by `priority + age / AgingSeconds`, which depends on `now()`. **Fix:** for any one query, `now()` is the same for every row, so that order equals sorting by the fixed per-row key `ReadyAt − Priority × AgingSeconds`. That key is stored as `ClaimOrder` when a task becomes Ready, and the partial index on Ready rows is keyed on it. Claims dropped to under 1 ms even with Postgres CPU-capped.
+3. Two NOTIFYs per unit of work became one round trip.
 
-## Reproduce
+## Where the ceiling is now
+
+- **Postgres CPU.** At 2 and 4 workers it sits at its cap. Per task it currently runs: a claim, a started event, a locked completion (lock, load the task, load the attempt, save, load the job, save the outbox rows, notify, commit), a log flush, and the dispatcher's outbox read and mark.
+- **Lock waits grow with workers** because a capped Postgres serves each locked unit more slowly. The 8 parallel middles of one job still complete through the same row. This DAG shape is the worst case for that.
+- **Next steps, if needed:**
+  - load only the dependents of the finished task in a completion, not the whole job;
+  - flush logs less often under load;
+  - batch claims (`LIMIT n` per round trip);
+  - move Postgres onto its own machine.
+
+## Reproduce (gently)
+
+Apply CPU caps first, so the test can't take over the machine. Save this as `loadtest.override.yml` next to `docker-compose.yml`:
+
+```yaml
+services:
+  postgres: { cpus: 1.0 }
+  api:      { cpus: 0.5 }
+  worker:   { cpus: 0.5 }
+  redis:    { cpus: 0.25 }
+  jaeger:   { cpus: 0.25 }
+  prometheus: { cpus: 0.25 }
+  grafana:  { cpus: 0.25 }
+```
 
 ```bash
-docker compose --profile stack up -d --build --scale worker=1
+docker compose -f docker-compose.yml -f loadtest.override.yml --profile stack up -d --build --scale worker=1
 docker exec relayforge-postgres psql -U postgres -d relayforge -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements"
-dotnet run -c Release --project backend/tools/RelayForge.LoadTest -- --api http://localhost:8080 --jobs 1000 --tasks 10 --duration 10
+dotnet run -c Release --project backend/tools/RelayForge.LoadTest -- --api http://localhost:8080 --jobs 200 --tasks 10 --duration 10
 docker exec relayforge-postgres psql -U postgres -d relayforge -c \
   "SELECT calls, round(mean_exec_time::numeric,2) AS avg_ms, left(query, 80) FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 5"
 ```
 
-Scale with `docker compose --profile stack up -d --scale worker=N worker`. A run of 10,000 tasks keeps a laptop busy for one to two minutes.
+Scale with `--scale worker=N`. Each run of 2,000 tasks takes 15–30 s. Stop with `docker compose --profile stack stop`.

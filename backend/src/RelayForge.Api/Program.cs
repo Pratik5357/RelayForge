@@ -5,6 +5,7 @@ using RelayForge.Api.Realtime;
 using RelayForge.Infrastructure;
 using RelayForge.Infrastructure.Execution;
 using RelayForge.Infrastructure.Telemetry;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -27,7 +28,13 @@ builder.Services.AddRelayForgeTelemetry(builder.Configuration, "relayforge-api",
 // wins when resolved by interface, so this becomes the one the outbox dispatcher uses.
 builder.Services.AddScoped<IJobEventNotifier, SignalRJobEventNotifier>();
 builder.Services.AddHostedService<TaskLogRelay>();
-builder.Services.AddSignalR();
+// With several API instances, a browser connected to instance A must still get the pushes that
+// instance B's dispatcher sends. SignalR:Redis turns on the Redis backplane for that.
+var signalR = builder.Services.AddSignalR();
+if (builder.Configuration["SignalR:Redis"] is { Length: > 0 } redis)
+{
+    signalR.AddStackExchangeRedis(redis, o => o.Configuration.ChannelPrefix = RedisChannel.Literal("relayforge"));
+}
 
 builder.Services.AddCors(options =>
 {

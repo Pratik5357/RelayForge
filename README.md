@@ -26,7 +26,7 @@ v2 turns RelayForge from a demo of job semantics into an engine that does real w
 - **One scheduled time creates at most one run**, enforced by a unique index rather than by the scheduler's lock.
 - **Execution is at-least-once.** Handlers with side effects should send the task's `IdempotencyKey` downstream, as `http.request` does in the `Idempotency-Key` header.
 
-How far it scales on one machine, and why: [docs/LOADTEST.md](docs/LOADTEST.md).
+How far it scales on one machine, and why: [docs/LOADTEST.md](docs/LOADTEST.md). In short, on capped CPUs, two worker processes give 1.8× the throughput of one, and then Postgres CPU is the limit.
 
 > Full list of settings, example values and troubleshooting: see [ENVIRONMENT.md](ENVIRONMENT.md).
 
@@ -93,7 +93,9 @@ docker compose --profile stack up -d --build --scale worker=3
 | Prometheus | http://localhost:9090 |
 | Grafana (dashboard) | http://localhost:3001 |
 
-`docker compose up -d` without the profile still starts only Postgres, as before. The stack uses the same database, so stop your locally run API first.
+`docker compose up -d` without the profile still starts only Postgres, as before. The stack uses the same database, so stop your locally run API first. After the first API has migrated the database, `--scale api=2` adds a second API on port 8081; Redis carries live updates between them.
+
+To try container isolation (`"isolation": "Container"`), build the runner image once: `docker build --target runner -t relayforge-runner backend`. The worker that runs those tasks needs the `docker` CLI, so run it on your machine (`dotnet run`), not inside Compose.
 
 ## Frontend setup
 

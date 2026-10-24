@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -8,7 +9,7 @@ using RelayForge.Infrastructure.Telemetry;
 namespace RelayForge.Infrastructure.Execution;
 
 /// <summary>One attempt a worker now owns. AttemptCount is the attempt's fencing token.</summary>
-public record ClaimedTask(Guid Id, Guid JobId, int AttemptCount, DateTimeOffset? ReadyAt, string? TraceParent);
+public record ClaimedTask(Guid Id, Guid JobId, int AttemptCount, DateTimeOffset? ReadyAt, string? TraceParent, string Name, int MaxAttempts);
 
 /// <summary>How an attempt ended, as its worker reports it.</summary>
 public sealed record AttemptReport(
@@ -69,15 +70,15 @@ public class TaskAttemptService
     ///
     /// FOR UPDATE SKIP LOCKED lets any number of workers poll at once: each locks a different
     /// row and nobody waits on a row another worker is claiming. Lease times use the database
-    /// clock (now()) so they can't be skewed by a worker machine's clock. Order: priority plus
-    /// one point per AgingSeconds waited, so old low-priority work can't starve. Paused jobs are
+    /// clock (now()) so they can't be skewed by a worker machine's clock. Order: ClaimOrder, i.e.
+    /// priority plus one point per AgingSeconds waited, so old low-priority work can't starve,
+    /// served straight from the partial index on Ready rows. Paused jobs are
     /// skipped, and so are tenants at their running-task cap (a soft cap: two workers can both
     /// see one free slot and both claim).
     /// </summary>
     public async Task<ClaimedTask?> TryClaimAsync(Guid workerId, CancellationToken cancellationToken)
     {
         var leaseMs = _reliability.LeaseDurationMs;
-        var agingSeconds = Math.Max(1, _fairness.AgingSeconds);
         var tenantCap = _fairness.MaxRunningPerTenant;
 
         var claimed = await _db.Database.SqlQuery<ClaimedTask>($"""
@@ -93,7 +94,7 @@ public class TaskAttemptService
                          FROM   "JobTasks" r
                          JOIN   "Jobs" rj ON rj."Id" = r."JobId"
                          WHERE  r."State" = 'Running' AND rj."TenantId" = j."TenantId") < {tenantCap})
-                ORDER  BY t."Priority" + EXTRACT(EPOCH FROM now() - COALESCE(t."ReadyAt", t."CreatedAt")) / {agingSeconds} DESC
+                ORDER  BY t."ClaimOrder"
                 LIMIT  1
                 FOR UPDATE OF t SKIP LOCKED
             ), claimed AS (
@@ -106,12 +107,12 @@ public class TaskAttemptService
                        "NextAttemptAt"  = NULL
                 FROM   candidate c
                 WHERE  t."Id" = c."Id"
-                RETURNING t."Id", t."JobId", t."AttemptCount", t."ReadyAt"
+                RETURNING t."Id", t."JobId", t."AttemptCount", t."ReadyAt", t."Name", t."MaxAttempts"
             ), opened AS (
                 INSERT INTO "TaskAttempts" ("TaskId", "JobId", "Attempt", "WorkerId", "StartedAt")
                 SELECT "Id", "JobId", "AttemptCount", {workerId}, now() FROM claimed
             )
-            SELECT c."Id", c."JobId", c."AttemptCount", c."ReadyAt", j."TraceParent"
+            SELECT c."Id", c."JobId", c."AttemptCount", c."ReadyAt", j."TraceParent", c."Name", c."MaxAttempts"
             FROM   claimed c
             JOIN   "Jobs" j ON j."Id" = c."JobId"
             """).ToListAsync(cancellationToken);
@@ -131,20 +132,48 @@ public class TaskAttemptService
         return claim;
     }
 
-    /// <summary>Records the "started" event for a fresh claim (and moves a Pending job to Running).</summary>
-    public Task MarkStartedAsync(ClaimedTask claim, Guid workerId, CancellationToken cancellationToken) =>
-        _orchestrator.ExecuteAsync(claim.JobId, async (events, ct) =>
+    /// <summary>
+    /// Records the "started" event for a fresh claim, and moves a Pending job to Running.
+    ///
+    /// One statement rather than a full locked unit: a start changes no task state and needs no
+    /// DAG advance, only the job's next event number. The UPDATE takes the job row's lock for the
+    /// length of that one statement, which keeps sequence numbers gap-free without holding the
+    /// lock across the several round trips a completion needs. (Under load, sibling tasks of one
+    /// job queue on that lock; see docs/LOADTEST.md.)
+    /// </summary>
+    public async Task MarkStartedAsync(ClaimedTask claim, Guid workerId, CancellationToken cancellationToken)
+    {
+        // Everything but the per-job sequence, job state and time, which the statement fills in.
+        var draft = JsonSerializer.Serialize(new
         {
-            var task = await _db.JobTasks.AsNoTracking().FirstAsync(t => t.Id == claim.Id, ct);
-            events.Add(new JobEventDraft(
-                "TaskStarted",
-                $"{task.Name} started (attempt {claim.AttemptCount} of {task.MaxAttempts}) on worker {ShortId(workerId)}.",
-                task.Id,
-                task.Name,
-                nameof(TaskState.Running),
-                claim.AttemptCount));
-            return true;
-        }, cancellationToken);
+            jobId = claim.JobId,
+            type = "TaskStarted",
+            taskId = claim.Id,
+            taskName = claim.Name,
+            taskState = nameof(TaskState.Running),
+            attempt = claim.AttemptCount,
+            message = $"{claim.Name} started (attempt {claim.AttemptCount} of {claim.MaxAttempts}) on worker {ShortId(workerId)}.",
+        }, OutboxJson.Options);
+
+        await _db.Database.ExecuteSqlInterpolatedAsync($"""
+            WITH job AS (
+                UPDATE "Jobs"
+                SET    "EventSequence" = "EventSequence" + 1,
+                       "State"         = CASE WHEN "State" = 'Pending' THEN 'Running' ELSE "State" END,
+                       "StartedAt"     = COALESCE("StartedAt", now())
+                WHERE  "Id" = {claim.JobId}
+                RETURNING "Id", "EventSequence", "State"
+            ), event AS (
+                INSERT INTO "OutboxEvents" ("JobId", "Sequence", "Type", "Payload", "CreatedAt")
+                SELECT "Id", "EventSequence", 'TaskStarted',
+                       {draft}::jsonb || jsonb_build_object('sequence', "EventSequence", 'jobState', "State", 'at', now()),
+                       now()
+                FROM   job
+                RETURNING 1
+            )
+            SELECT pg_notify({PgChannels.Outbox}, '') FROM event
+            """, cancellationToken);
+    }
 
     /// <summary>
     /// Extends this attempt's lease by LeaseDurationMs, fenced like every other write. Also
@@ -231,8 +260,7 @@ public class TaskAttemptService
                         // A deploy isn't the task's fault: hand it back without spending its
                         // budget. AttemptCount stays (it's the fencing token, so it only goes
                         // up); the budget grows by one instead.
-                        task.State = TaskState.Ready;
-                        task.ReadyAt = now;
+                        task.MarkReady(now, _fairness.AgingSeconds);
                         task.MaxAttempts++;
                         ClearLease(task);
                         break;

@@ -92,7 +92,7 @@ One entry per decision: the options considered, what was chosen, and why. Writte
 ### Process split
 
 - **Chosen:** `RelayForge.Api` (HTTP, SignalR, outbox dispatcher) and `RelayForge.Worker` (worker pool, sweep, scheduler; no HTTP). `WorkerPool:RunInApi=true` keeps the single-process deployment (Railway) working unchanged.
-- **SignalR with several API instances:** not solved. There's no Redis backplane, so the API stays at one instance; any number of workers is fine. The dispatcher would need the backplane, or a sticky "one dispatcher per client" design, before the API can scale.
+- **SignalR with several API instances:** the Redis backplane (`SignalR:Redis`). Each instance's dispatcher takes different outbox rows (`SKIP LOCKED`), and the backplane delivers each push to whichever instance a browser is connected to. This was checked with two instances and a client on each: both received every event. Without Redis configured, run one API instance; any number of workers is fine either way. Railway runs one instance, so it needs no Redis.
 
 ### Leader election
 
@@ -103,7 +103,7 @@ One entry per decision: the options considered, what was chosen, and why. Writte
 
 - **Tracing across the queue:** a table carries no trace context, so the submit request's W3C `traceparent` is stored on the job, and each `task.execute` span uses it as its parent. Scheduled runs start their own `schedule.fire` span.
 - **Metrics:** queue depth (sampled by the sweep leader), queue wait (Ready to claimed), attempt duration, attempts by outcome, retries, dead letters, reclaims, stale results and submissions. They're exported over OTLP to Prometheus's native receiver, so neither host needs a scrape endpoint or a prerelease exporter package.
-- **Result:** see [LOADTEST.md](LOADTEST.md). On one laptop the per-job row lock is the bottleneck. The fixes are listed there; none is implemented yet.
+- **Result:** see [LOADTEST.md](LOADTEST.md). The first round found that a second worker made things slower. Two fixes followed: a single-statement started event, and an indexable claim order. After them, two workers give 1.8× the throughput of one, and Postgres CPU becomes the limit. The Compose stack's traces were checked in Jaeger: one trace holds `POST /api/jobs` from the API and every `task.execute` span from the workers.
 
 ## Phase 5: platform
 
@@ -119,7 +119,7 @@ One entry per decision: the options considered, what was chosen, and why. Writte
 - **Options:** in-process (default), `AssemblyLoadContext`, child process, container.
 - **Chosen:** in-process by default; `"isolation": "Process"` runs `RelayForge.Runner` as a child process; `"Container"` runs the runner image under `docker run --memory --cpus --network none --read-only` (with network only for `http.request`). The invocation goes in on stdin, log lines come out on stdout and stderr, and the result comes back as one marked line. On timeout or cancel the process tree is killed.
 - **Why not AssemblyLoadContext:** it helps with loading plugins, but it isn't isolation. The code still shares the process and can't be stopped.
-- **Container mode** is implemented but not covered by the automated tests: it needs Docker on the worker's machine, which Railway doesn't allow.
+- **Container mode** needs Docker on the worker's machine, which Railway doesn't allow. Its two integration tests (a task runs in a container; a runaway container is killed at its limit) run wherever the `relayforge-runner` image is built, and skip elsewhere, e.g. in CI.
 - **Logs:** `TaskLogs` rows written in batches every 300 ms, capped at 1,000 lines per attempt, with a `NOTIFY` so the API can push "new lines" to watching browsers.
 
 ### Operator actions
@@ -127,6 +127,6 @@ One entry per decision: the options considered, what was chosen, and why. Writte
 - **Redrive:** moves a `DeadLettered` or `Failed` task back to `Ready` with a fresh budget. If the job had finished, it reopens. Every `Cancelled` task in a job nobody cancelled was cancelled only because it was blocked, so they all go back to `Pending`, and the normal advance step re-blocks the ones still stuck behind another failure. That keeps the reopen logic to a few lines.
 - **Pause:** `PausedAt` on the job. Advance promotes nothing and the claim query skips the job. Running attempts finish.
 - **Idempotent submit:** an `Idempotency-Key` header is stored with a SHA-256 hash of the body, in the same transaction as the job. The same key and body return the first job (200); the same key with a different body gets 422. A race between two identical requests is settled by the key's primary key.
-- **Priority and aging:** claim order is `priority + seconds waited / AgingSeconds`. That expression depends on `now()`, so no index serves the sort. It's fine at this scale, and LOADTEST.md shows where it starts to cost.
+- **Priority and aging:** the order is `priority + seconds waited / AgingSeconds`. Sorting by that needs `now()`, but `now()` is the same for every row of one query. So the order is identical to ascending `ReadyAt − Priority × AgingSeconds`, which is fixed per row. It's stored as `ClaimOrder` by `JobTask.MarkReady` and indexed over Ready rows only, so a claim reads the first index entry instead of sorting. A changed `AgingSeconds` applies to tasks that become Ready afterwards.
 - **Tenant caps:** a soft cap, checked in the claim query, so two workers can both see one free slot and both claim. A hard cap would need a per-tenant counter row locked by the claim, which puts a lock on the hottest path. Soft is the right default here.
 - **Retention:** a built-in schedule (`relayforge.retention`, 03:00 UTC) runs the `retention` handler. It deletes runs finished more than 7 days ago, 1,000 at a time, each batch in its own short transaction. At large scale the next step would be monthly partitions of `JobTasks`, dropped whole.

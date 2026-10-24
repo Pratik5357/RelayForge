@@ -159,6 +159,16 @@ public class PlatformTests
     }
 
     [Fact]
+    public async Task Schedule_in_a_non_utc_zone_can_be_created()
+    {
+        await using var host = new RelayForgeHost(_postgres.NewDatabase(), workers: 0);
+        var response = await host.PostAsync("/api/schedules", new CreateScheduleRequest(
+            "nightly", "0 2 * * *", "Asia/Kolkata", new SubmitJobRequest(null, null, [Step("a")])));
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Forbid_skips_a_run_while_the_previous_one_is_active()
     {
         await using var host = new RelayForgeHost(_postgres.NewDatabase(), workers: 0);
@@ -233,6 +243,20 @@ public class ScheduleCalculatorTests
 
         Assert.Equal(new DateTimeOffset(2026, 10, 25, 0, 30, 0, TimeSpan.Zero), first); // 01:30 BST
         Assert.Equal(new DateTimeOffset(2026, 10, 26, 1, 30, 0, TimeSpan.Zero), second); // next day, 01:30 GMT
+    }
+
+    [Fact]
+    public void Fire_times_are_utc_whatever_the_schedule_zone()
+    {
+        // Npgsql only writes timestamptz values with offset 0.
+        var next = ScheduleCalculator.Next("0 2 * * *", "Asia/Kolkata", new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        var due = ScheduleCalculator.DueRuns("0 2 * * *", "Asia/Kolkata", MisfirePolicy.CatchUp, next, next.AddDays(2));
+
+        Assert.Equal(TimeSpan.Zero, next.Offset);
+        // 00:00 UTC is already 05:30 IST, so the next 02:00 IST is Jan 2, i.e. 20:30 UTC on Jan 1.
+        Assert.Equal(new DateTimeOffset(2026, 1, 1, 20, 30, 0, TimeSpan.Zero), next);
+        Assert.All(due.Runs, r => Assert.Equal(TimeSpan.Zero, r.Offset));
+        Assert.Equal(TimeSpan.Zero, due.NextFireAt.Offset);
     }
 
     [Fact]
